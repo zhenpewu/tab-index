@@ -14,6 +14,12 @@ export type BackgroundRequest =
   | { type: "getSnapshot"; currentWindowId?: number }
   | { type: "activateTab"; tabId: number }
   | { type: "closeTabs"; tabIds: number[] }
+  | {
+      type: "closeDuplicateGroups";
+      groupKeys: string[];
+      settings: Settings;
+      currentWindowId?: number;
+    }
   | { type: "getSettings" }
   | { type: "saveSettings"; settings: Settings }
   | { type: "consumePopupMode" }
@@ -33,6 +39,11 @@ export interface BackgroundResponseMap {
   getSnapshot: MessageResult<TabSnapshot>;
   activateTab: MessageResult<{ tabId: number; windowId: number }>;
   closeTabs: MessageResult<{
+    closedTabIds: number[];
+    missingTabIds: number[];
+    failedTabs: { tabId: number; message: string }[];
+  }>;
+  closeDuplicateGroups: MessageResult<{
     closedTabIds: number[];
     missingTabIds: number[];
     failedTabs: { tabId: number; message: string }[];

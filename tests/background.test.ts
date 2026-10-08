@@ -468,6 +468,70 @@ describe("createBackgroundHandlers", () => {
     expect(fake.state.tabs.map(({ id }) => id)).toEqual([2]);
   });
 
+  it("revalidates a duplicate group and skips tabs that navigated before bulk close", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, {
+        url: "https://example.com/docs",
+        lastAccessed: 100,
+      }),
+      firefoxTab(2, 1, {
+        url: "https://example.com/other",
+        lastAccessed: 200,
+      }),
+    ]);
+    const handlers = createBackgroundHandlers(fake.api);
+
+    const response = await handlers.handleMessage({
+      type: "closeDuplicateGroups",
+      groupKeys: ["url:https://example.com/docs|window:1"],
+      settings: DEFAULT_SETTINGS,
+      currentWindowId: 1,
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      data: {
+        closedTabIds: [],
+        missingTabIds: [],
+        failedTabs: [],
+      },
+    });
+    expect(fake.state.lastTabQuery).toEqual({ windowType: "normal" });
+    expect(fake.state.tabs.map(({ id }) => id)).toEqual([1, 2]);
+  });
+
+  it("recomputes the retained tab immediately before bulk close", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, {
+        url: "https://example.com/docs",
+        lastAccessed: 100,
+      }),
+      firefoxTab(2, 1, {
+        url: "https://example.com/docs",
+        pinned: true,
+        lastAccessed: 200,
+      }),
+    ]);
+    const handlers = createBackgroundHandlers(fake.api);
+
+    const response = await handlers.handleMessage({
+      type: "closeDuplicateGroups",
+      groupKeys: ["url:https://example.com/docs|window:1"],
+      settings: DEFAULT_SETTINGS,
+      currentWindowId: 1,
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      data: {
+        closedTabIds: [1],
+        missingTabIds: [],
+        failedTabs: [],
+      },
+    });
+    expect(fake.state.tabs.map(({ id }) => id)).toEqual([2]);
+  });
+
   it("returns merged settings and persists validated settings", async () => {
     const fake = makeFakeBrowser();
     fake.state.local[SETTINGS_STORAGE_KEY] = {

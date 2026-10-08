@@ -1,4 +1,5 @@
 import { mergeSettings } from "../domain/settings";
+import { findDuplicateGroups } from "../domain/duplicates";
 import { toTabRecords } from "../shared/browser";
 import type {
   BackgroundRequest,
@@ -6,6 +7,7 @@ import type {
   MessageResult,
   PopupMode,
   ResponseFor,
+  TabSnapshot,
 } from "../shared/messages";
 import {
   POPUP_MODE_STORAGE_KEY,
@@ -92,6 +94,7 @@ function requestType(
     case "getSnapshot":
     case "activateTab":
     case "closeTabs":
+    case "closeDuplicateGroups":
     case "getSettings":
     case "saveSettings":
     case "consumePopupMode":
@@ -161,7 +164,7 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
 
   async function getSnapshot(
     requestedWindowId: unknown,
-  ): Promise<BackgroundResponse> {
+  ): Promise<MessageResult<TabSnapshot>> {
     try {
       const tabs = await api.tabs.query({ windowType: "normal" });
       const explicitWindowId = finiteNumber(requestedWindowId);
@@ -267,6 +270,34 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
     }
 
     return success({ closedTabIds, missingTabIds, failedTabs });
+  }
+
+  async function closeDuplicateGroups(
+    groupKeys: unknown,
+    settings: unknown,
+    currentWindowId: unknown,
+  ): Promise<BackgroundResponse> {
+    if (
+      !Array.isArray(groupKeys) ||
+      !groupKeys.every((key): key is string => typeof key === "string")
+    ) {
+      return unsupportedMessage();
+    }
+
+    const snapshot = await getSnapshot(currentWindowId);
+    if (!snapshot.ok) {
+      return snapshot;
+    }
+
+    const requestedKeys = new Set(groupKeys);
+    const tabIds = findDuplicateGroups(
+      snapshot.data.tabs,
+      mergeSettings(settings),
+    )
+      .filter(({ key }) => requestedKeys.has(key))
+      .flatMap(({ closableTabIds }) => closableTabIds);
+
+    return closeTabs(tabIds);
   }
 
   async function getSettings(): Promise<BackgroundResponse> {
@@ -485,6 +516,12 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
         return activateTab(fields.tabId);
       case "closeTabs":
         return closeTabs(fields.tabIds);
+      case "closeDuplicateGroups":
+        return closeDuplicateGroups(
+          fields.groupKeys,
+          fields.settings,
+          fields.currentWindowId,
+        );
       case "getSettings":
         return getSettings();
       case "saveSettings":

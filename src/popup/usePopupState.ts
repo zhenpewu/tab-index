@@ -27,7 +27,6 @@ export interface PopupTab extends TabRecord {
 export interface PopupDuplicateGroup
   extends Omit<DuplicateGroup, "tabs"> {
   tabs: PopupTab[];
-  visibleClosableTabIds: number[];
 }
 
 function errorText(error: unknown): string {
@@ -202,9 +201,7 @@ export function usePopupState() {
       ),
     [currentWindowId, enrichedTabs, query],
   );
-  const allGroups = useMemo<
-    Array<Omit<PopupDuplicateGroup, "visibleClosableTabIds">>
-  >(
+  const allGroups = useMemo<PopupDuplicateGroup[]>(
     () => {
       const enrichedById = new Map(
         enrichedTabs.map((tab) => [tab.id, tab] as const),
@@ -226,14 +223,10 @@ export function usePopupState() {
         if (tabs.length === 0) {
           return [];
         }
-        const visibleTabIds = new Set(tabs.map(({ id }) => id));
         return [
           {
             ...group,
             tabs,
-            visibleClosableTabIds: group.closableTabIds.filter((tabId) =>
-              visibleTabIds.has(tabId),
-            ),
           },
         ];
       }),
@@ -329,21 +322,8 @@ export function usePopupState() {
     }
   }
 
-  async function closeTabs(
-    requestedIds: readonly number[],
-    allowRetainedTabId?: number,
-  ): Promise<void> {
-    const retainedIds = new Set(
-      allGroups.map(({ retainedTabId }) => retainedTabId),
-    );
-    const tabIds = [
-      ...new Set(
-        requestedIds.filter(
-          (tabId) =>
-            !retainedIds.has(tabId) || tabId === allowRetainedTabId,
-        ),
-      ),
-    ];
+  async function closeTabs(requestedIds: readonly number[]): Promise<void> {
+    const tabIds = [...new Set(requestedIds)];
     if (tabIds.length === 0) {
       return;
     }
@@ -378,23 +358,61 @@ export function usePopupState() {
     setErrors(actionErrors);
   }
 
-  function closeRow(tab: PopupTab, explicitPointerAction: boolean) {
-    return closeTabs(
-      [tab.id],
-      explicitPointerAction ? tab.id : undefined,
+  async function closeDuplicateGroups(groupKeys: readonly string[]) {
+    if (groupKeys.length === 0) {
+      return;
+    }
+
+    const titleById = new Map(
+      enrichedTabs.map(({ id, title }) => [id, title] as const),
     );
+    const actionErrors: string[] = [];
+
+    try {
+      const request: BackgroundRequest =
+        snapshot.currentWindowId === null
+          ? {
+              type: "closeDuplicateGroups",
+              groupKeys: [...new Set(groupKeys)],
+              settings,
+            }
+          : {
+              type: "closeDuplicateGroups",
+              groupKeys: [...new Set(groupKeys)],
+              settings,
+              currentWindowId: snapshot.currentWindowId,
+            };
+      const result = await sendBackgroundMessage(request);
+      if (!result.ok) {
+        actionErrors.push(result.error.message);
+      } else {
+        for (const failure of result.data.failedTabs) {
+          actionErrors.push(
+            `Could not close ${titleById.get(failure.tabId) ?? `tab ${failure.tabId}`}: ${failure.message}`,
+          );
+        }
+      }
+    } catch (error) {
+      actionErrors.push(errorText(error));
+    }
+
+    const refreshError = await refreshSnapshot();
+    if (refreshError) {
+      actionErrors.push(refreshError);
+    }
+    setErrors(actionErrors);
+  }
+
+  function closeRow(tab: PopupTab) {
+    return closeTabs([tab.id]);
   }
 
   function closeGroup(group: PopupDuplicateGroup) {
-    return closeTabs(group.visibleClosableTabIds);
+    return closeDuplicateGroups([group.key]);
   }
 
   function closeAll() {
-    return closeTabs(
-      groups.flatMap(
-        ({ visibleClosableTabIds }) => visibleClosableTabIds,
-      ),
-    );
+    return closeDuplicateGroups(groups.map(({ key }) => key));
   }
 
   function reviewDuplicates(tab: PopupTab) {
@@ -465,11 +483,11 @@ export function usePopupState() {
       const selected = visibleRows.find(
         ({ id }) => id === selectedTabIdRef.current,
       );
-      if (!selected || selected.retained) {
+      if (!selected) {
         return;
       }
       event.preventDefault();
-      void closeRow(selected, false);
+      void closeRow(selected);
       return;
     }
 

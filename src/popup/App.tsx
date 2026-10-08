@@ -24,7 +24,7 @@ export function App() {
         ? "No pinned tabs"
         : "No tabs found";
   const closeAllCount = popup.groups.reduce(
-    (count, group) => count + group.visibleClosableTabIds.length,
+    (count, group) => count + group.closableTabIds.length,
     0,
   );
 
@@ -67,7 +67,7 @@ export function App() {
               groups: popup.groups,
               selectedTabId: popup.selectedTabId,
               onActivate: (tab) => void popup.activateTab(tab.id),
-              onClose: (tab) => void popup.closeRow(tab, true),
+              onClose: (tab) => void popup.closeRow(tab),
               onCloseGroup: (group) => void popup.closeGroup(group),
               onSelect: popup.setSelectedTabId,
             }),
@@ -80,7 +80,7 @@ export function App() {
             tabs,
             selectedTabId: popup.selectedTabId,
             onActivate: (tab) => void popup.activateTab(tab.id),
-            onClose: (tab) => void popup.closeRow(tab, true),
+            onClose: (tab) => void popup.closeRow(tab),
             onReviewDuplicates: popup.reviewDuplicates,
             onSelect: popup.setSelectedTabId,
           });

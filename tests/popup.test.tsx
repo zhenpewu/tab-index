@@ -154,6 +154,18 @@ function installFakeBrowser({
             closeIndex += 1;
             return value;
           }
+          case "closeDuplicateGroups": {
+            const value = closeResults[closeIndex] ?? {
+              ok: true,
+              data: {
+                closedTabIds: [],
+                missingTabIds: [],
+                failedTabs: [],
+              },
+            };
+            closeIndex += 1;
+            return value;
+          }
           case "openOptions":
             return openOptionsResult;
           default:
@@ -604,7 +616,7 @@ describe("popup keyboard and actions", () => {
     expect(requestOfType(requests, "closeTabs")).toEqual([]);
   });
 
-  it("never closes a retained row from Delete but permits its own close button", async () => {
+  it("Delete closes an explicitly selected retained row", async () => {
     const { requests } = installFakeBrowser({
       mode: "duplicates",
       snapshots: [
@@ -621,13 +633,6 @@ describe("popup keyboard and actions", () => {
     retained.focus();
 
     await user.keyboard("{Delete}");
-    expect(requestOfType(requests, "closeTabs")).toEqual([]);
-
-    await user.click(
-      within(retained).getByRole("button", {
-        name: "Close Firefox Docs",
-      }),
-    );
     await waitFor(() =>
       expect(requestOfType(requests, "closeTabs")).toEqual([
         { type: "closeTabs", tabIds: [1] },
@@ -635,7 +640,7 @@ describe("popup keyboard and actions", () => {
     );
   });
 
-  it("group close sends only that group's non-retained IDs", async () => {
+  it("group close asks the background to revalidate that duplicate group", async () => {
     const { requests } = installFakeBrowser({
       snapshots: [
         snapshot(),
@@ -651,13 +656,20 @@ describe("popup keyboard and actions", () => {
     await user.click(closeGroup);
 
     await waitFor(() =>
-      expect(requestOfType(requests, "closeTabs")).toEqual([
-        { type: "closeTabs", tabIds: [2] },
+      expect(requestOfType(requests, "closeDuplicateGroups")).toEqual([
+        {
+          type: "closeDuplicateGroups",
+          groupKeys: [
+            "url:https://developer.mozilla.org/docs|window:1",
+          ],
+          settings: DEFAULT_SETTINGS,
+          currentWindowId: 1,
+        },
       ]),
     );
   });
 
-  it("filtered group close sends only visible matching non-retained rows", async () => {
+  it("filtered group close still closes the complete revalidated group", async () => {
     const tabs = [
       duplicateTabs[0]!,
       duplicateTabs[1]!,
@@ -679,13 +691,20 @@ describe("popup keyboard and actions", () => {
     await user.type(search, "Third");
     await user.click(
       screen.getByRole("button", {
-        name: "Close 1 duplicate in group",
+        name: "Close 2 duplicates in group",
       }),
     );
 
     await waitFor(() =>
-      expect(requestOfType(requests, "closeTabs")).toEqual([
-        { type: "closeTabs", tabIds: [6] },
+      expect(requestOfType(requests, "closeDuplicateGroups")).toEqual([
+        {
+          type: "closeDuplicateGroups",
+          groupKeys: [
+            "url:https://developer.mozilla.org/docs|window:1",
+          ],
+          settings: DEFAULT_SETTINGS,
+          currentWindowId: 1,
+        },
       ]),
     );
   });
@@ -716,15 +735,21 @@ describe("popup keyboard and actions", () => {
     await user.click(closeAll);
 
     await waitFor(() =>
-      expect(requestOfType(requests, "closeTabs")).toEqual([
-        { type: "closeTabs", tabIds: [2, 5] },
+      expect(requestOfType(requests, "closeDuplicateGroups")).toEqual([
+        {
+          type: "closeDuplicateGroups",
+          groupKeys: [
+            "url:https://developer.mozilla.org/docs|window:1",
+            "url:https://news.example|window:1",
+          ],
+          settings: DEFAULT_SETTINGS,
+          currentWindowId: 1,
+        },
       ]),
     );
-    expect(requestOfType(requests, "closeTabs")[0]?.tabIds).not.toContain(1);
-    expect(requestOfType(requests, "closeTabs")[0]?.tabIds).not.toContain(4);
   });
 
-  it("filtered close all excludes hidden closable rows and retained rows", async () => {
+  it("filtered close all preserves complete group semantics", async () => {
     const tabs = [
       ...duplicateTabs,
       tab(4, {
@@ -758,18 +783,23 @@ describe("popup keyboard and actions", () => {
     await user.type(search, "Copy");
     await user.click(
       screen.getByRole("button", {
-        name: "Close all 2 duplicates",
+        name: "Close all 3 duplicates",
       }),
     );
 
     await waitFor(() =>
-      expect(requestOfType(requests, "closeTabs")).toEqual([
-        { type: "closeTabs", tabIds: [2, 5] },
+      expect(requestOfType(requests, "closeDuplicateGroups")).toEqual([
+        {
+          type: "closeDuplicateGroups",
+          groupKeys: [
+            "url:https://developer.mozilla.org/docs|window:1",
+            "url:https://news.example|window:1",
+          ],
+          settings: DEFAULT_SETTINGS,
+          currentWindowId: 1,
+        },
       ]),
     );
-    expect(requestOfType(requests, "closeTabs")[0]?.tabIds).not.toContain(1);
-    expect(requestOfType(requests, "closeTabs")[0]?.tabIds).not.toContain(4);
-    expect(requestOfType(requests, "closeTabs")[0]?.tabIds).not.toContain(6);
   });
 
   it("refreshes after partial close results, hides missing tabs, and reports failed entries inline", async () => {

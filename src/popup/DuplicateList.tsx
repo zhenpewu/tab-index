@@ -41,7 +41,7 @@ export function DuplicateList({
     { class: "duplicate-list" },
     groups.map((group) => {
       const label = groupLabel(group);
-      const closeCount = group.visibleClosableTabIds.length;
+      const closeCount = group.closableTabIds.length;
       const closeLabel = `Close ${closeCount} ${
         closeCount === 1 ? "duplicate" : "duplicates"
       } in group`;
