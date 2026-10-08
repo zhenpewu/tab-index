@@ -1,11 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 16 16">
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0.5 0.75 14.5 14.5">
   <style>
-    .icon { stroke: #15141a; }
-    @media (prefers-color-scheme: dark) { .icon { stroke: #fbfbfe; } }
+    .icon { color: #5b5b66; }
+    @media (prefers-color-scheme: dark) { .icon { color: #fbfbfe; } }
   </style>
-  <g class="icon" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="4.25" y="1.25" width="10.5" height="9.5" rx="1.75" stroke-width="1.6" opacity=".65"/>
-    <rect x="1.25" y="4.75" width="10.5" height="10" rx="1.75" stroke-width="1.6"/>
-    <path d="M4.25 8.25h4.5M4.25 11h3.25" stroke-width="1.35"/>
+  <defs>
+    <mask id="front-cutouts">
+      <rect width="16" height="16" fill="#fff"/>
+      <circle cx="5.55" cy="5" r=".7" fill="#000"/>
+      <rect x="6.9" y="4.35" width="6.35" height="1.35" rx=".675" fill="#000"/>
+      <rect x="4.7" y="6.55" width="9.2" height="3.55" rx=".6" fill="#000"/>
+    </mask>
+  </defs>
+  <g class="icon" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path data-layer="rear-trace" d="M1.5 5.25v6.75a1.5 1.5 0 0 0 1.5 1.5h9.25" fill="none" stroke-width="1.35"/>
+    <rect data-layer="front-card" x="3.35" y="2.9" width="11.9" height="8.75" rx="2.1" stroke="none" mask="url(#front-cutouts)"/>
   </g>
 </svg>
