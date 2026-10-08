@@ -1,6 +1,7 @@
 // Duplicate matching semantics are adapted from Duplicate Tabs Closer 4.3.4.
 // See THIRD_PARTY_NOTICES.md. This implementation is typed, deterministic,
 // side-effect-free, and does not call browser APIs.
+// Modified for Tab Index on 2026-10-08.
 
 import { parseTitleRules, parseUrlRules, parseWhitelist } from "./rules";
 import { findSharedTitleRule, titlesMatch } from "./title";

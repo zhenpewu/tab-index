@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "build": "vite build",
     "lint:extension": "web-ext lint --source-dir dist",
-    "package": "npm run build && web-ext build --source-dir dist --artifacts-dir web-ext-artifacts --overwrite-dest",
+    "package:source": "node scripts/package-source.mjs",
+    "package": "npm run build && web-ext build --source-dir dist --artifacts-dir web-ext-artifacts --overwrite-dest && npm run package:source",
     "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run lint:extension"
   },
   "dependencies": {

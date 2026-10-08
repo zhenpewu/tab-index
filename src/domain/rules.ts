@@ -1,6 +1,7 @@
 // Matching semantics are adapted from Duplicate Tabs Closer 4.3.4.
 // See THIRD_PARTY_NOTICES.md. This implementation is written as typed,
 // side-effect-free TypeScript for Tab Index.
+// Modified for Tab Index on 2026-10-08.
 
 import type {
   PatternRule,

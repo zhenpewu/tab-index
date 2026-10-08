@@ -1,6 +1,7 @@
 // Title matching semantics are adapted from Duplicate Tabs Closer 4.3.4.
 // See THIRD_PARTY_NOTICES.md. This implementation is typed, reentrant, and
 // browser-independent for Tab Index.
+// Modified for Tab Index on 2026-10-08.
 
 import type { PatternRule } from "./types";
 

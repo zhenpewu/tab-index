@@ -106,17 +106,17 @@ describe("release asset copying", () => {
 });
 
 describe("Firefox minimum versions", () => {
-  it("keeps desktop Firefox 140 while requiring Firefox Android 142", () => {
+  it("targets Firefox 142 without advertising untested Android support", () => {
     const manifest = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../manifest.json"), "utf8"),
     );
 
     expect(manifest.browser_specific_settings.gecko.strict_min_version).toBe(
-      "140.0",
+      "142.0",
     );
-    expect(
-      manifest.browser_specific_settings.gecko_android.strict_min_version,
-    ).toBe("142.0");
+    expect(manifest.browser_specific_settings).not.toHaveProperty(
+      "gecko_android",
+    );
   });
 
   it("ships the macOS tab-search shortcut verified by live smoke", () => {
@@ -127,5 +127,42 @@ describe("Firefox minimum versions", () => {
     expect(manifest.commands["search-tabs"].suggested_key.mac).toBe(
       "Command+Shift+Y",
     );
+  });
+});
+
+describe("source release", () => {
+  it("packages a version-matched source archive beside the extension ZIP", () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8"),
+    );
+
+    expect(packageJson.scripts.package).toContain("npm run package:source");
+    expect(packageJson.scripts["package:source"]).toBe(
+      "node scripts/package-source.mjs",
+    );
+    expect(
+      readFileSync(
+        resolve(import.meta.dirname, "../scripts/package-source.mjs"),
+        "utf8",
+      ),
+    ).toContain(
+      "`tab_index-${packageJson.version}-source.tar.gz`",
+    );
+  });
+
+  it("dates the modification notices in every adapted domain file", () => {
+    for (const file of [
+      "duplicates.ts",
+      "rules.ts",
+      "title.ts",
+      "url.ts",
+    ]) {
+      expect(
+        readFileSync(
+          resolve(import.meta.dirname, `../src/domain/${file}`),
+          "utf8",
+        ),
+      ).toContain("Modified for Tab Index on 2026-10-08.");
+    }
   });
 });

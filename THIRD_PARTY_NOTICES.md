@@ -12,6 +12,9 @@ by the projects listed below.
 - License: GNU General Public License version 3 or later
 - Use in Tab Index: duplicate matching and retained-tab behavior were adapted
   into Tab Index's typed domain modules.
+- Modified for Tab Index on 2026-10-08. The adapted implementation lives in
+  `src/domain/duplicates.ts`, `src/domain/rules.ts`, `src/domain/title.ts`, and
+  `src/domain/url.ts`.
 
 Upstream copyright and license notice:
 
@@ -100,3 +103,10 @@ Copyright 2017 Kirollos Risk
 The complete Apache License 2.0 text and Fuse.js application notice are
 included in `licenses/fuse.js-Apache-2.0.txt`. The distributed Fuse.js package
 does not contain a separate `NOTICE` file.
+
+## Corresponding source
+
+Each packaged Tab Index extension ZIP is accompanied by a version-matched
+`tab_index-<version>-source.tar.gz` archive containing the tracked source,
+build configuration, tests, license, and notices needed to rebuild that
+version.

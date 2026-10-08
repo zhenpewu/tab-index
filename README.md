@@ -61,8 +61,9 @@ npm run check
 npm run package
 ```
 
-The production extension is built into `dist/`. Packaged ZIP files are written
-to `web-ext-artifacts/`. To launch the current build in a disposable Firefox
+The production extension is built into `dist/`. `npm run package` writes the
+installable ZIP and its version-matched source archive to
+`web-ext-artifacts/`. To launch the current build in a disposable Firefox
 profile, run:
 
 ```bash

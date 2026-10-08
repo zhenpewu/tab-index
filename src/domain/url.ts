@@ -1,6 +1,7 @@
 // URL matching semantics are adapted from Duplicate Tabs Closer 4.3.4.
 // See THIRD_PARTY_NOTICES.md. This implementation is written as a typed,
 // browser-compatible pure function for Tab Index.
+// Modified for Tab Index on 2026-10-08.
 
 import { parseUrlRules } from "./rules";
 import type { Settings, UrlRule } from "./types";
