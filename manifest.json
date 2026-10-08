@@ -3,6 +3,12 @@
   "name": "Tab Index",
   "version": "0.1.0",
   "description": "Search, switch, and close duplicate tabs.",
+  "icons": {
+    "16": "icons/icon-16.svg",
+    "32": "icons/icon-32.svg",
+    "48": "icons/icon-48.svg",
+    "96": "icons/icon-96.svg"
+  },
   "permissions": ["tabs", "storage", "contextualIdentities"],
   "background": {
     "scripts": ["background.js"],
@@ -10,6 +16,10 @@
   },
   "action": {
     "default_title": "Tab Index",
+    "default_icon": {
+      "16": "icons/icon-16.svg",
+      "32": "icons/icon-32.svg"
+    },
     "default_popup": "popup/index.html"
   },
   "options_ui": {
@@ -19,7 +29,7 @@
   "commands": {
     "search-tabs": {
       "suggested_key": {
-        "mac": "Command+Shift+L"
+        "mac": "Command+Shift+Y"
       },
       "description": "Search open tabs"
     }
@@ -32,6 +42,9 @@
         "required": ["none"],
         "optional": []
       }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
     }
   }
 }

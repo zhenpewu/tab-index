@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +12,14 @@ const implementationEntries = [
   backgroundEntry,
   resolve(sourceRoot, "popup/main.tsx"),
   resolve(sourceRoot, "options/main.tsx"),
+];
+
+export const releaseCopyEntries = [
+  "manifest.json",
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "icons",
+  "licenses",
 ];
 
 export function shouldUseScaffoldFallback(
@@ -51,20 +59,24 @@ function scaffoldFallbackEntries() {
 
 const useScaffoldFallback = shouldUseScaffoldFallback(implementationEntries);
 
+export function copyExtensionReleaseFiles(
+  releaseRoot: string,
+  releaseDistRoot: string,
+) {
+  mkdirSync(releaseDistRoot, { recursive: true });
+
+  for (const entry of releaseCopyEntries) {
+    cpSync(resolve(releaseRoot, entry), resolve(releaseDistRoot, entry), {
+      recursive: true,
+    });
+  }
+}
+
 function copyExtensionFiles() {
   return {
     name: "tab-index-copy-extension-files",
     closeBundle() {
-      mkdirSync(distRoot, { recursive: true });
-      copyFileSync(
-        resolve(projectRoot, "manifest.json"),
-        resolve(distRoot, "manifest.json"),
-      );
-
-      const iconsRoot = resolve(projectRoot, "icons");
-      if (existsSync(iconsRoot)) {
-        cpSync(iconsRoot, resolve(distRoot, "icons"), { recursive: true });
-      }
+      copyExtensionReleaseFiles(projectRoot, distRoot);
     },
   };
 }
