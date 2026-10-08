@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["firefox-webext-browser", "node", "vitest/globals"]
+  },
+  "include": ["tests", "vite.config.ts", "vitest.config.ts"]
+}
