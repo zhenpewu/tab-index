@@ -5,8 +5,8 @@
 html,
 body {
   margin: 0;
-  width: 420px;
-  background: var(--background);
+  width: 460px;
+  background: transparent;
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -25,27 +25,31 @@ button {
 }
 
 .popup {
-  width: 420px;
-  max-height: 600px;
-  overflow-y: auto;
-  background: var(--surface);
+  width: 460px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--popup-surface);
   font-size: var(--font-size);
 }
 
 .popup-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 8px;
+  padding: 8px 10px 10px;
   border-bottom: 1px solid var(--separator);
-  background: var(--surface);
+  background: var(--popup-surface);
+}
+
+.popup-results {
+  max-height: 480px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 6px;
 }
 
 .popup-header-top {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 7px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .mode-strip {
@@ -62,13 +66,14 @@ button {
 .duplicate-count,
 .icon-button {
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
 }
 
 .mode-strip button {
-  min-height: 28px;
-  padding: 4px 6px;
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 4px 10px;
 }
 
 .mode-strip button:hover,
@@ -76,34 +81,34 @@ button {
 .close-all:hover,
 .duplicate-count:hover,
 .icon-button:hover {
-  background: var(--button-hover);
+  background: var(--popup-hover);
 }
 
 .mode-strip button.is-active {
-  background: var(--selection);
-  color: var(--selection-text);
+  background: var(--popup-selection);
+  color: var(--popup-selection-text);
 }
 
 .search-input {
   width: 100%;
-  height: 30px;
+  height: 32px;
   border: 1px solid var(--separator);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border-radius: 8px;
+  padding: 5px 10px;
   outline: none;
-  background: var(--background);
+  background: var(--popup-surface);
 }
 
 .search-input:focus-visible,
 button:focus-visible,
 .tab-row:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--popup-focus);
   outline-offset: -2px;
 }
 
 .inline-errors {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 0;
   color: var(--error);
   font-size: 0.92em;
 }
@@ -133,12 +138,12 @@ button:focus-visible,
 .close-all,
 .group-close {
   padding: 3px 6px;
-  color: var(--focus);
+  color: var(--text);
 }
 
 .group-header {
   gap: 6px;
-  background: var(--background);
+  background: var(--popup-surface);
 }
 
 .group-title {
@@ -155,14 +160,22 @@ button:focus-visible,
 }
 
 .section-label {
-  height: 26px;
+  height: auto;
   margin: 0;
-  padding: 6px 10px 4px;
-  border-bottom: 1px solid var(--separator);
-  background: var(--background);
+  padding: 6px 12px;
+  border-bottom: 0;
+  background: var(--popup-surface);
   color: var(--muted-text);
   font-size: 0.88em;
   font-weight: 400;
+}
+
+.tab-section + .tab-section {
+  border-top: 1px solid var(--separator);
+}
+
+.tab-section:not(:last-child) {
+  padding-bottom: 4px;
 }
 
 .tab-row {
@@ -170,19 +183,21 @@ button:focus-visible,
   align-items: center;
   gap: 8px;
   height: var(--row-height);
-  padding: 3px 6px 3px 10px;
-  border-bottom: 1px solid var(--separator);
+  margin: 0 6px;
+  padding: 2px 8px 2px 12px;
+  border-bottom: 0;
+  border-radius: 10px;
   outline: none;
   cursor: default;
 }
 
 .tab-row:hover {
-  background: var(--surface-hover);
+  background: var(--popup-hover);
 }
 
 .tab-row.is-selected {
-  background: var(--selection);
-  color: var(--selection-text);
+  background: var(--popup-selection);
+  color: var(--popup-selection-text);
 }
 
 .favicon,
@@ -209,28 +224,12 @@ button:focus-visible,
   font-size: 15px;
 }
 
-.tab-copy {
-  display: flex;
+.tab-title {
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-}
-
-.tab-title,
-.tab-meta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.tab-meta {
-  color: var(--muted-text);
-  font-size: 0.86em;
-}
-
-.tab-row.is-selected .tab-meta {
-  color: inherit;
-  opacity: 0.78;
 }
 
 .keep-label {
@@ -241,20 +240,30 @@ button:focus-visible,
 .duplicate-count {
   min-width: 24px;
   padding: 2px 5px;
-  color: var(--focus);
+  color: var(--muted-text);
 }
 
 .icon-button {
-  width: 26px;
-  height: 26px;
+  display: grid;
+  width: 28px;
+  height: 28px;
   padding: 0;
+  place-items: center;
   color: var(--muted-text);
-  font-size: 18px;
-  line-height: 1;
+}
+
+.icon-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .tab-row.is-selected .keep-label,
 .tab-row.is-selected .icon-button {
+  color: inherit;
+}
+
+.tab-row.is-selected .duplicate-count {
   color: inherit;
 }
 

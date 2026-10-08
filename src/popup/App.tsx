@@ -13,6 +13,26 @@ const MODES: Array<{ label: string; value: PopupViewMode }> = [
   { label: "Pinned", value: "pinned" },
 ];
 
+function SettingsIcon() {
+  return h(
+    "svg",
+    {
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "aria-hidden": "true",
+      focusable: "false",
+    },
+    h("path", {
+      d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+    }),
+    h("circle", { cx: "12", cy: "12", r: "3" }),
+  );
+}
+
 export function App() {
   const popup = usePopupState();
   const tabs =
@@ -60,7 +80,7 @@ export function App() {
                   disabled: closeAllCount === 0,
                   onClick: () => void popup.closeAll(),
                 },
-                "Close All",
+                "Close all",
               ),
             ),
             h(DuplicateList, {
@@ -130,7 +150,7 @@ export function App() {
             title: "Open settings",
             onClick: () => void popup.openOptions(),
           },
-          "⚙",
+          h(SettingsIcon, null),
         ),
       ),
       h("input", {
@@ -143,17 +163,21 @@ export function App() {
         onInput: (event) => popup.setQuery(event.currentTarget.value),
       }),
     ),
-    popup.errors.length > 0
-      ? h(
-          "div",
-          {
-            class: "inline-errors",
-            role: "status",
-            "aria-live": "polite",
-          },
-          popup.errors.map((error) => h("p", { key: error }, error)),
-        )
-      : null,
-    content,
+    h(
+      "div",
+      { class: "popup-results" },
+      popup.errors.length > 0
+        ? h(
+            "div",
+            {
+              class: "inline-errors",
+              role: "status",
+              "aria-live": "polite",
+            },
+            popup.errors.map((error) => h("p", { key: error }, error)),
+          )
+        : null,
+      content,
+    ),
   );
 }

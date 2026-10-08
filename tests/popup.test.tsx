@@ -201,6 +201,15 @@ afterEach(() => {
 });
 
 describe("popup startup and modes", () => {
+  it("keeps the header outside the scrollable results region", () => {
+    installFakeBrowser();
+
+    const { container } = render(h(App, null));
+
+    expect(container.querySelector(".popup > .popup-header")).not.toBeNull();
+    expect(container.querySelector(".popup > .popup-results")).not.toBeNull();
+  });
+
   it("loads mode, settings, and a containing-window snapshot concurrently and defaults to Duplicates", async () => {
     const calls: string[] = [];
     const mode = deferred<MessageResult<PopupMode>>();
@@ -362,6 +371,31 @@ describe("popup startup and modes", () => {
     ).toHaveLength(1);
   });
 
+  it("initially selects the active Firefox tab instead of the first visible row", async () => {
+    installFakeBrowser({
+      mode: "all-tabs",
+      snapshots: [
+        snapshot([
+          tab(1, { title: "First visible tab" }),
+          tab(2, { title: "Active tab", active: true }),
+          tab(3, { title: "Last visible tab" }),
+        ]),
+      ],
+    });
+
+    render(h(App, null));
+
+    expect(
+      (await screen.findByRole("listitem", { name: "Active tab" }))
+        .getAttribute("data-selected"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("listitem", { name: "First visible tab" })
+        .getAttribute("data-selected"),
+    ).toBe("false");
+  });
+
   it("renders window section labels in sentence case", async () => {
     installFakeBrowser({
       mode: "all-tabs",
@@ -397,6 +431,8 @@ describe("popup startup and modes", () => {
       name: "Open settings",
     });
     expect(settingsButton.getAttribute("title")).toBe("Open settings");
+    expect(settingsButton.querySelector("svg")).not.toBeNull();
+    expect(settingsButton.textContent).toBe("");
     await user.click(settingsButton);
 
     expect(requestOfType(requests, "openOptions")).toEqual([
@@ -732,6 +768,7 @@ describe("popup keyboard and actions", () => {
     const closeAll = await screen.findByRole("button", {
       name: "Close all 2 duplicates",
     });
+    expect(closeAll.textContent).toBe("Close all");
     await user.click(closeAll);
 
     await waitFor(() =>
@@ -911,6 +948,10 @@ describe("popup keyboard and actions", () => {
     const row = await screen.findByRole("listitem", {
       name: "Quarterly Report",
     });
+    expect(row.getAttribute("title")).toBe(
+      "https://work.example/report",
+    );
+    expect(within(row).queryByText("work.example/report")).toBeNull();
     await user.click(row);
 
     expect(requestOfType(requests, "activateTab")).toContainEqual({
@@ -921,6 +962,8 @@ describe("popup keyboard and actions", () => {
       name: "Close Quarterly Report",
     });
     expect(closeButton.getAttribute("title")).toBe("Close tab");
+    expect(closeButton.querySelector("svg")).not.toBeNull();
+    expect(closeButton.textContent).toBe("");
   });
 
   it("lets a focused row close button handle Enter without also activating the tab", async () => {
@@ -958,7 +1001,7 @@ describe("popup keyboard and actions", () => {
 });
 
 describe("popup theme and density", () => {
-  it("defines exact density sizes, native theme media, reduced motion, and the 420px popup cap", () => {
+  it("defines exact density sizes, native theme media, reduced motion, and stable popup dimensions", () => {
     const themeCss = readFileSync(
       resolve(process.cwd(), "src/shared/theme.css"),
       "utf8",
@@ -969,31 +1012,99 @@ describe("popup theme and density", () => {
     );
 
     expect(themeCss).toContain("--font-size: 13px");
-    expect(themeCss).toContain("--row-height: 36px");
+    expect(themeCss).toContain("--row-height: 32px");
     expect(themeCss).toMatch(
-      /\[data-density="comfortable"\][\s\S]*--font-size: 14px[\s\S]*--row-height: 40px/,
+      /\[data-density="comfortable"\][\s\S]*--font-size: 14px[\s\S]*--row-height: 36px/,
     );
     expect(themeCss).toMatch(
-      /\[data-density="dense"\][\s\S]*--font-size: 12px[\s\S]*--row-height: 32px/,
+      /\[data-density="dense"\][\s\S]*--font-size: 12px[\s\S]*--row-height: 28px/,
     );
     expect(themeCss).toContain("@media (prefers-color-scheme: dark)");
     expect(themeCss).toContain("@media (prefers-reduced-motion: reduce)");
     expect(popupCss).toMatch(
-      /html,\s*body\s*\{[^}]*width:\s*420px;/,
+      /html,\s*body\s*\{[^}]*width:\s*460px;/,
     );
     expect(popupCss).toMatch(
-      /\.popup\s*\{[^}]*width:\s*420px;/,
-    );
-    expect(popupCss).not.toMatch(/\b(?:max-)?width:[^;]*vw/);
-    expect(popupCss).toMatch(
-      /\.popup\s*\{[^}]*max-height:\s*600px;/,
+      /html,\s*body\s*\{[^}]*background:\s*transparent;/,
     );
     expect(popupCss).toMatch(
-      /\.popup\s*\{[^}]*overflow-y:\s*auto;/,
+      /\.popup\s*\{[^}]*width:\s*460px;[^}]*border-radius:\s*14px;[^}]*overflow:\s*hidden;/,
     );
-    expect(popupCss).not.toMatch(/max-height:[^;]*vh/);
+    expect(popupCss).not.toMatch(/\.popup\s*\{[^}]*overflow-y:/);
+    expect(popupCss).toMatch(
+      /\.popup-results\s*\{[^}]*max-height:\s*480px;[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*none;/,
+    );
+    expect(popupCss).not.toMatch(
+      /\b(?:max-)?(?:width|height):[^;]*v[wh]/,
+    );
     expect(popupCss).toMatch(
       /\.popup\s*\{[\s\S]*font-size:\s*var\(--font-size\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-row\s*\{[^}]*border-bottom:\s*0;/,
+    );
+    expect(themeCss).toContain("--popup-surface: #ffffff");
+    expect(themeCss).toContain("--popup-selection: #e7f1ff");
+    expect(themeCss).toContain("--popup-focus: #0060df");
+    expect(themeCss).toMatch(
+      /@media \(prefers-color-scheme: dark\)[\s\S]*--popup-surface: #42414c[\s\S]*--popup-selection: #4f5e83[\s\S]*--popup-focus: #b5d9ff/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-row\s*\{[^}]*margin:\s*0 6px;[^}]*border-radius:\s*10px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-row:hover\s*\{[^}]*background:\s*var\(--popup-hover\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-row\.is-selected\s*\{[^}]*background:\s*var\(--popup-selection\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.mode-strip button\.is-active\s*\{[^}]*background:\s*var\(--popup-selection\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.mode-strip button\s*\{[^}]*border-radius:\s*8px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.mode-strip button,[\s\S]*\.icon-button\s*\{[^}]*border-radius:\s*6px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.mode-strip button:hover,[\s\S]*\.icon-button:hover\s*\{[^}]*background:\s*var\(--popup-hover\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.search-input\s*\{[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--popup-surface\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-title\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/,
+    );
+    expect(popupCss).toMatch(
+      /\.inline-errors\s*\{[^}]*border-bottom:\s*0;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup-header\s*\{[^}]*padding:\s*8px 10px 10px;[^}]*border-bottom:\s*1px solid var\(--separator\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.section-label\s*\{[^}]*padding:\s*6px 12px;[^}]*border-bottom:\s*0;[^}]*background:\s*var\(--popup-surface\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.group-header\s*\{[^}]*background:\s*var\(--popup-surface\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-section \+ \.tab-section\s*\{[^}]*border-top:\s*1px solid var\(--separator\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-section:not\(:last-child\)\s*\{[^}]*padding-bottom:\s*4px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.icon-button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.search-input:focus-visible,[\s\S]*\.tab-row:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--popup-focus\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.duplicate-count\s*\{[^}]*color:\s*var\(--muted-text\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.tab-row\.is-selected \.duplicate-count\s*\{[^}]*color:\s*inherit;/,
     );
     expect(popupCss).not.toContain("text-transform: uppercase");
     expect(`${themeCss}\n${popupCss}`).not.toMatch(/purple|pink/i);

@@ -1,10 +1,15 @@
 :root {
   color-scheme: light dark;
   --font-size: 13px;
-  --row-height: 36px;
+  --row-height: 32px;
   --background: #f9f9fb;
   --surface: #ffffff;
   --surface-hover: #f0f0f4;
+  --popup-surface: #ffffff;
+  --popup-hover: #f0f0f4;
+  --popup-selection: #e7f1ff;
+  --popup-selection-text: #15141a;
+  --popup-focus: #0060df;
   --text: #15141a;
   --muted-text: #5b5b66;
   --separator: #d7d7db;
@@ -17,12 +22,12 @@
 
 [data-density="comfortable"] {
   --font-size: 14px;
-  --row-height: 40px;
+  --row-height: 36px;
 }
 
 [data-density="dense"] {
   --font-size: 12px;
-  --row-height: 32px;
+  --row-height: 28px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +35,11 @@
     --background: #1c1b22;
     --surface: #2b2a33;
     --surface-hover: #38383d;
+    --popup-surface: #42414c;
+    --popup-hover: #52515e;
+    --popup-selection: #4f5e83;
+    --popup-selection-text: #fbfbfe;
+    --popup-focus: #b5d9ff;
     --text: #fbfbfe;
     --muted-text: #cfcfd8;
     --separator: #52525e;

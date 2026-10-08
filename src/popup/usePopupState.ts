@@ -249,7 +249,10 @@ export function usePopupState() {
       selectedTabIdRef.current === null ||
       !visibleRows.some(({ id }) => id === selectedTabIdRef.current)
     ) {
-      selectedTabIdRef.current = visibleRows[0]?.id ?? null;
+      selectedTabIdRef.current =
+        visibleRows.find(({ active }) => active)?.id ??
+        visibleRows[0]?.id ??
+        null;
     }
     visibleRowsKeyRef.current = selectionScopeKey;
   }

@@ -32,13 +32,20 @@ function Favicon({ tab }: { tab: PopupTab }) {
   });
 }
 
-function displayUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.hostname}${parsed.pathname === "/" ? "" : parsed.pathname}`;
-  } catch {
-    return url;
-  }
+function CloseIcon() {
+  return h(
+    "svg",
+    {
+      viewBox: "0 0 16 16",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "1.5",
+      "stroke-linecap": "round",
+      "aria-hidden": "true",
+      focusable: "false",
+    },
+    h("path", { d: "M3.5 3.5l9 9m0-9-9 9" }),
+  );
 }
 
 export function TabRow({
@@ -61,6 +68,7 @@ export function TabRow({
       role: "listitem",
       "aria-label": label,
       "aria-current": selected ? "true" : undefined,
+      title: tab.url || undefined,
       "data-selected": selected ? "true" : "false",
       tabIndex: selected ? 0 : -1,
       "data-tab-id": tab.id,
@@ -70,13 +78,8 @@ export function TabRow({
     h(Favicon, { tab }),
     h(
       "span",
-      { class: "tab-copy" },
-      h(
-        "span",
-        { class: "tab-title" },
-        tab.title || tab.url || "Untitled tab",
-      ),
-      h("span", { class: "tab-meta" }, displayUrl(tab.url)),
+      { class: "tab-title" },
+      tab.title || tab.url || "Untitled tab",
     ),
     tab.retained ? h("span", { class: "keep-label" }, "Keep") : null,
     showDuplicateCount && tab.duplicateCount !== undefined
@@ -107,7 +110,7 @@ export function TabRow({
           onClose(tab);
         },
       },
-      "×",
+      h(CloseIcon, null),
     ),
   );
 }
