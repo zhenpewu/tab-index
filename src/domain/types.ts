@@ -33,6 +33,7 @@ export interface Settings {
 export interface TabRecord {
   id: number;
   windowId: number;
+  currentWindow: boolean;
   cookieStoreId: string;
   active: boolean;
   pinned: boolean;
