@@ -13,6 +13,11 @@ const typescriptLanguageOptions = {
   },
 };
 
+const typescriptCoreRuleOverrides = {
+  "no-undef": "off",
+  "no-unused-vars": "off",
+};
+
 export default [
   {
     ignores: [
@@ -32,6 +37,7 @@ export default [
         ...globals.webextensions,
       },
     },
+    rules: typescriptCoreRuleOverrides,
   },
   {
     files: ["vite.config.ts", "vitest.config.ts"],
@@ -50,5 +56,6 @@ export default [
         ...globals.webextensions,
       },
     },
+    rules: typescriptCoreRuleOverrides,
   },
 ];
