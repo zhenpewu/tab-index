@@ -26,6 +26,15 @@ describe("normalizeUrl", () => {
     ).toBe("https://example.com/search");
   });
 
+  it("preserves fragments when only query parameters are ignored", () => {
+    expect(
+      normalizeUrl(
+        "https://example.com/search?q=firefox#results",
+        settings({ ignoreQuery: true }),
+      ),
+    ).toBe("https://example.com/search#results");
+  });
+
   it("removes non-file paths when configured", () => {
     expect(
       normalizeUrl(

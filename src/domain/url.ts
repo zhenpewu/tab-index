@@ -64,11 +64,25 @@ export function normalizeUrl(url: string, settings: Settings): string {
       // string-based normalization steps are still safe to apply.
     }
   } else {
-    if (settings.ignoreQuery) {
-      normalized = normalized.split("?")[0] ?? normalized;
-    }
-    if (settings.ignoreFragment) {
-      normalized = normalized.split("#")[0] ?? normalized;
+    try {
+      const parsedUrl = new URL(normalized);
+      if (settings.ignoreQuery) {
+        parsedUrl.search = "";
+      }
+      if (settings.ignoreFragment) {
+        parsedUrl.hash = "";
+      }
+      normalized = parsedUrl.href;
+    } catch {
+      if (settings.ignoreQuery) {
+        const [withoutFragment, fragment] = normalized.split("#", 2);
+        normalized = `${withoutFragment?.split("?")[0] ?? normalized}${
+          fragment === undefined ? "" : `#${fragment}`
+        }`;
+      }
+      if (settings.ignoreFragment) {
+        normalized = normalized.split("#")[0] ?? normalized;
+      }
     }
   }
 
