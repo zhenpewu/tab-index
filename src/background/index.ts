@@ -1,5 +1,6 @@
 import { mergeSettings } from "../domain/settings";
 import { findDuplicateGroups } from "../domain/duplicates";
+import type { Settings } from "../domain/types";
 import { toTabRecords } from "../shared/browser";
 import type {
   BackgroundRequest,
@@ -7,6 +8,7 @@ import type {
   MessageResult,
   PopupMode,
   ResponseFor,
+  SettingsPatch,
   TabSnapshot,
 } from "../shared/messages";
 import {
@@ -97,6 +99,7 @@ function requestType(
     case "closeDuplicateGroups":
     case "getSettings":
     case "saveSettings":
+    case "patchSettings":
     case "consumePopupMode":
     case "openOptions":
       return request.type;
@@ -150,7 +153,9 @@ function storedPopupModeHandoff(value: unknown): PopupModeHandoff | undefined {
 
 export function createBackgroundHandlers(api: BackgroundBrowser) {
   let generation = 0;
+  let badgeRevision = 0;
   let popupModeQueue: Promise<void> = Promise.resolve();
+  let settingsWriteQueue: Promise<void> = Promise.resolve();
   let windowFocusQueue: Promise<void> = Promise.resolve();
   let activePopupModeHandoff: ActivePopupModeHandoff | undefined;
 
@@ -300,7 +305,7 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
     return closeTabs(tabIds);
   }
 
-  async function getSettings(): Promise<BackgroundResponse> {
+  async function getSettings(): Promise<MessageResult<Settings>> {
     try {
       const stored = await api.storage.local.get(SETTINGS_STORAGE_KEY);
       return success(mergeSettings(stored[SETTINGS_STORAGE_KEY]));
@@ -309,14 +314,85 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
     }
   }
 
-  async function saveSettings(settings: unknown): Promise<BackgroundResponse> {
+  async function refreshBadge(requestedWindowId?: number): Promise<void> {
+    const revision = ++badgeRevision;
+
     try {
-      const merged = mergeSettings(settings);
-      await api.storage.local.set({ [SETTINGS_STORAGE_KEY]: merged });
-      return success(merged);
-    } catch (error) {
-      return browserError(error);
+      const [snapshot, settings] = await Promise.all([
+        getSnapshot(requestedWindowId),
+        getSettings(),
+      ]);
+      if (!snapshot.ok || !settings.ok || revision !== badgeRevision) {
+        return;
+      }
+
+      const badgeCount =
+        settings.data.badgeCountMode === "all-tabs"
+          ? snapshot.data.tabs.length
+          : settings.data.badgeCountMode === "current-window-tabs"
+            ? snapshot.data.tabs.filter(({ currentWindow }) => currentWindow)
+                .length
+            : findDuplicateGroups(
+                snapshot.data.tabs,
+                settings.data,
+              ).reduce(
+                (count, group) =>
+                  count + group.closableTabIds.length,
+                0,
+              );
+      const text =
+        badgeCount === 0
+          ? ""
+          : badgeCount > 999
+            ? "999+"
+            : String(badgeCount);
+
+      await api.action.setBadgeBackgroundColor({ color: "#5b5b66" });
+      if (revision === badgeRevision) {
+        await api.action.setBadgeText({ text });
+      }
+    } catch {
+      // Badge rendering is supplementary and must not break tab operations.
     }
+  }
+
+  function enqueueSettingsWrite(
+    update: (current: Settings) => Settings,
+  ): Promise<BackgroundResponse> {
+    const operation = settingsWriteQueue.then(async () => {
+      try {
+        const current = await getSettings();
+        if (!current.ok) {
+          return current;
+        }
+        const next = update(current.data);
+        await api.storage.local.set({ [SETTINGS_STORAGE_KEY]: next });
+        await refreshBadge();
+        return success(next);
+      } catch (error) {
+        return browserError(error);
+      }
+    });
+
+    settingsWriteQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
+  function saveSettings(settings: unknown): Promise<BackgroundResponse> {
+    return enqueueSettingsWrite(() => mergeSettings(settings));
+  }
+
+  function patchSettings(patch: unknown): Promise<BackgroundResponse> {
+    const fields =
+      typeof patch === "object" && patch !== null
+        ? (patch as SettingsPatch)
+        : {};
+    return enqueueSettingsWrite((current) =>
+      mergeSettings({ ...current, ...fields }),
+    );
   }
 
   async function removeStoredHandoffIfTokenMatches(
@@ -526,6 +602,8 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
         return getSettings();
       case "saveSettings":
         return saveSettings(fields.settings);
+      case "patchSettings":
+        return patchSettings(fields.patch);
       case "consumePopupMode":
         return consumePopupMode();
       case "openOptions":
@@ -585,6 +663,7 @@ export function createBackgroundHandlers(api: BackgroundBrowser) {
     handleCommand,
     invalidate,
     getGeneration,
+    refreshBadge,
     trackFocusedWindow,
   };
 }
@@ -595,22 +674,32 @@ export function registerBackground(api: BackgroundBrowser) {
   api.runtime.onMessage.addListener((message) =>
     handlers.handleMessage(message),
   );
+  api.runtime.onInstalled.addListener(() => handlers.refreshBadge());
+  api.runtime.onStartup.addListener(() => handlers.refreshBadge());
   api.commands.onCommand.addListener((command) => {
     void handlers.handleCommand(command);
   });
 
-  api.tabs.onCreated.addListener(handlers.invalidate);
-  api.tabs.onUpdated.addListener(handlers.invalidate);
-  api.tabs.onRemoved.addListener(handlers.invalidate);
-  api.tabs.onActivated.addListener(handlers.invalidate);
-  api.tabs.onAttached.addListener(handlers.invalidate);
-  api.tabs.onDetached.addListener(handlers.invalidate);
-  api.windows.onCreated.addListener(handlers.invalidate);
-  api.windows.onRemoved.addListener(handlers.invalidate);
+  const invalidateAndRefresh = () => {
+    handlers.invalidate();
+    return handlers.refreshBadge();
+  };
+
+  api.tabs.onCreated.addListener(invalidateAndRefresh);
+  api.tabs.onUpdated.addListener(invalidateAndRefresh);
+  api.tabs.onRemoved.addListener(invalidateAndRefresh);
+  api.tabs.onActivated.addListener(invalidateAndRefresh);
+  api.tabs.onAttached.addListener(invalidateAndRefresh);
+  api.tabs.onDetached.addListener(invalidateAndRefresh);
+  api.windows.onCreated.addListener(invalidateAndRefresh);
+  api.windows.onRemoved.addListener(invalidateAndRefresh);
   api.windows.onFocusChanged.addListener((windowId) => {
     handlers.invalidate();
-    return handlers.trackFocusedWindow(windowId);
+    return handlers
+      .trackFocusedWindow(windowId)
+      .then(() => handlers.refreshBadge(windowId));
   });
+  void handlers.refreshBadge();
 
   return handlers;
 }

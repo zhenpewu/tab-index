@@ -29,6 +29,20 @@ export interface PopupDuplicateGroup
   tabs: PopupTab[];
 }
 
+type DuplicateSettingsPatch = Partial<
+  Pick<
+    Settings,
+    | "agePreference"
+    | "badgeCountMode"
+    | "keepActiveTab"
+    | "keepPinnedTab"
+    | "preferHttps"
+    | "prioritizeActiveWindow"
+    | "titleMatchMode"
+    | "titleSimilarityThreshold"
+  >
+>;
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -83,6 +97,7 @@ export function usePopupState() {
   const [settings, setSettings] = useState<Settings>({
     ...DEFAULT_SETTINGS,
   });
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [snapshot, setSnapshot] = useState<TabSnapshot>({
     tabs: [],
     currentWindowId: null,
@@ -94,6 +109,13 @@ export function usePopupState() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const popupWindowIdRef = useRef<number | undefined>(undefined);
   const selectedTabIdRef = useRef<number | null>(null);
+  const settingsRef = useRef<Settings>({ ...DEFAULT_SETTINGS });
+  const confirmedSettingsRef = useRef<Settings>({
+    ...DEFAULT_SETTINGS,
+  });
+  const pendingSettingsPatchRef =
+    useRef<DuplicateSettingsPatch>({});
+  const settingsSaveInFlightRef = useRef(false);
   const visibleRowsKeyRef = useRef("");
   const keyDownHandlerRef = useRef<(event: KeyboardEvent) => void>(
     () => undefined,
@@ -125,6 +147,8 @@ export function usePopupState() {
       }
 
       if (settingsResult.ok) {
+        settingsRef.current = settingsResult.data;
+        confirmedSettingsRef.current = settingsResult.data;
         setSettings(settingsResult.data);
       } else {
         startupErrors.push(settingsResult.error.message);
@@ -325,7 +349,75 @@ export function usePopupState() {
     }
   }
 
+  async function flushDuplicateSettingsPatches(): Promise<void> {
+    if (settingsSaveInFlightRef.current) {
+      return;
+    }
+
+    const patch = pendingSettingsPatchRef.current;
+    if (Object.keys(patch).length === 0) {
+      setSettingsSaving(false);
+      return;
+    }
+
+    pendingSettingsPatchRef.current = {};
+    settingsSaveInFlightRef.current = true;
+    setSettingsSaving(true);
+
+    try {
+      const result = await sendBackgroundMessage({
+        type: "patchSettings",
+        patch,
+      });
+      if (result.ok) {
+        confirmedSettingsRef.current = result.data;
+        const rebased = {
+          ...result.data,
+          ...pendingSettingsPatchRef.current,
+        };
+        settingsRef.current = rebased;
+        setSettings(rebased);
+      } else {
+        pendingSettingsPatchRef.current = {};
+        settingsRef.current = confirmedSettingsRef.current;
+        setSettings(confirmedSettingsRef.current);
+        setErrors([result.error.message]);
+      }
+    } catch (error) {
+      pendingSettingsPatchRef.current = {};
+      settingsRef.current = confirmedSettingsRef.current;
+      setSettings(confirmedSettingsRef.current);
+      setErrors([errorText(error)]);
+    } finally {
+      settingsSaveInFlightRef.current = false;
+      if (Object.keys(pendingSettingsPatchRef.current).length > 0) {
+        void flushDuplicateSettingsPatches();
+      } else {
+        setSettingsSaving(false);
+      }
+    }
+  }
+
+  function saveDuplicateSettings(
+    patch: DuplicateSettingsPatch,
+  ): void {
+    pendingSettingsPatchRef.current = {
+      ...pendingSettingsPatchRef.current,
+      ...patch,
+    };
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    setSettings(next);
+    setSettingsSaving(true);
+    setErrors([]);
+    void flushDuplicateSettingsPatches();
+  }
+
   async function closeTabs(requestedIds: readonly number[]): Promise<void> {
+    if (settingsSaveInFlightRef.current) {
+      return;
+    }
+
     const tabIds = [...new Set(requestedIds)];
     if (tabIds.length === 0) {
       return;
@@ -362,6 +454,10 @@ export function usePopupState() {
   }
 
   async function closeDuplicateGroups(groupKeys: readonly string[]) {
+    if (settingsSaveInFlightRef.current) {
+      return;
+    }
+
     if (groupKeys.length === 0) {
       return;
     }
@@ -439,6 +535,12 @@ export function usePopupState() {
 
   function handleKeyDown(event: KeyboardEvent) {
     const target = event.target;
+    const fromSettingsPane =
+      target instanceof Element &&
+      target.closest(".duplicate-settings-pane") !== null;
+    if (fromSettingsPane && event.key !== "Escape") {
+      return;
+    }
     const fromButton =
       target instanceof Element && target.closest("button") !== null;
     if (fromButton && event.key !== "Escape") {
@@ -480,7 +582,10 @@ export function usePopupState() {
     }
 
     if (event.key === "Delete") {
-      if (isEditableTarget(target)) {
+      if (
+        isEditableTarget(target) ||
+        settingsSaveInFlightRef.current
+      ) {
         return;
       }
       const selected = visibleRows.find(
@@ -527,12 +632,14 @@ export function usePopupState() {
     pinnedTabs,
     query,
     reviewDuplicates,
+    saveDuplicateSettings,
     searchInputRef,
     selectedTabId,
     selectMode,
     setQuery,
     setSelectedTabId: selectTabId,
     settings,
+    settingsSaving,
     activateTab,
   };
 }

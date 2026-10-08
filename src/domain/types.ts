@@ -8,6 +8,11 @@ export type TitleMatchMode = "url-only" | "url-or-title" | "url-and-title";
 
 export type AgePreference = "older" | "newer";
 
+export type BadgeCountMode =
+  | "all-tabs"
+  | "current-window-tabs"
+  | "duplicate-tabs";
+
 export interface Settings {
   density: Density;
   scope: DuplicateScope;
@@ -28,6 +33,7 @@ export interface Settings {
   keepActiveTab: boolean;
   agePreference: AgePreference;
   prioritizeActiveWindow: boolean;
+  badgeCountMode: BadgeCountMode;
 }
 
 export interface TabRecord {

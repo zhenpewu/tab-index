@@ -59,6 +59,24 @@ describe("findDuplicateGroups", () => {
     expect(groups[0]?.closableTabIds).toEqual([2]);
   });
 
+  it("keeps distinct resource paths separate in URL-only mode", () => {
+    const groups = findDuplicateGroups(
+      [
+        tab(1, {
+          url: "https://work.example/projects/tool/logs?session=one",
+          title: "Tool workspace",
+        }),
+        tab(2, {
+          url: "https://work.example/projects/tool/files/main/build?session=two",
+          title: "Tool workspace",
+        }),
+      ],
+      settings({ ignoreQuery: true }),
+    );
+
+    expect(groups).toEqual([]);
+  });
+
   it("groups different URLs by fuzzy title in URL-or-title mode", () => {
     const groups = findDuplicateGroups(
       [

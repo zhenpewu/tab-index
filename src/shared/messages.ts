@@ -4,6 +4,7 @@ export const SETTINGS_STORAGE_KEY = "settings";
 export const POPUP_MODE_STORAGE_KEY = "popupMode";
 
 export type PopupMode = "duplicates" | "all-tabs";
+export type SettingsPatch = Partial<Settings>;
 
 export interface TabSnapshot {
   tabs: TabRecord[];
@@ -22,6 +23,7 @@ export type BackgroundRequest =
     }
   | { type: "getSettings" }
   | { type: "saveSettings"; settings: Settings }
+  | { type: "patchSettings"; patch: SettingsPatch }
   | { type: "consumePopupMode" }
   | { type: "openOptions" };
 
@@ -50,6 +52,7 @@ export interface BackgroundResponseMap {
   }>;
   getSettings: MessageResult<Settings>;
   saveSettings: MessageResult<Settings>;
+  patchSettings: MessageResult<Settings>;
   consumePopupMode: MessageResult<PopupMode>;
   openOptions: MessageResult<null>;
 }

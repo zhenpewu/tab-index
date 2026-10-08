@@ -1,6 +1,7 @@
 import { Fragment, h } from "preact";
 
 import { DuplicateList } from "./DuplicateList";
+import { DuplicateSettingsPane } from "./DuplicateSettingsPane";
 import { TabList } from "./TabList";
 import {
   usePopupState,
@@ -35,6 +36,7 @@ function SettingsIcon() {
 
 export function App() {
   const popup = usePopupState();
+  const duplicateMode = popup.mode === "duplicates";
   const tabs =
     popup.mode === "pinned" ? popup.pinnedTabs : popup.allTabs;
   const emptyText =
@@ -52,46 +54,51 @@ export function App() {
   if (popup.loading) {
     content = h("p", { class: "empty-state" }, "Loading tabs…");
   } else if (popup.mode === "duplicates") {
-    content =
+    content = h(
+      Fragment,
+      null,
+      h(
+        "div",
+        { class: "duplicate-toolbar" },
+        h(
+          "span",
+          null,
+          `${popup.groups.length} ${
+            popup.groups.length === 1 ? "group" : "groups"
+          }`,
+        ),
+        h(
+          "div",
+          { class: "duplicate-toolbar-actions" },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "close-all",
+              "aria-label": `Close all ${closeAllCount} ${
+                closeAllCount === 1 ? "duplicate" : "duplicates"
+              }`,
+              title: "Close all non-retained duplicates",
+              disabled:
+                closeAllCount === 0 || popup.settingsSaving,
+              onClick: () => void popup.closeAll(),
+            },
+            "Close all",
+          ),
+        ),
+      ),
       popup.groups.length === 0
         ? h("p", { class: "empty-state" }, emptyText)
-        : h(
-            Fragment,
-            null,
-            h(
-              "div",
-              { class: "duplicate-toolbar" },
-              h(
-                "span",
-                null,
-                `${popup.groups.length} ${
-                  popup.groups.length === 1 ? "group" : "groups"
-                }`,
-              ),
-              h(
-                "button",
-                {
-                  type: "button",
-                  class: "close-all",
-                  "aria-label": `Close all ${closeAllCount} ${
-                    closeAllCount === 1 ? "duplicate" : "duplicates"
-                  }`,
-                  title: "Close all non-retained duplicates",
-                  disabled: closeAllCount === 0,
-                  onClick: () => void popup.closeAll(),
-                },
-                "Close all",
-              ),
-            ),
-            h(DuplicateList, {
-              groups: popup.groups,
-              selectedTabId: popup.selectedTabId,
-              onActivate: (tab) => void popup.activateTab(tab.id),
-              onClose: (tab) => void popup.closeRow(tab),
-              onCloseGroup: (group) => void popup.closeGroup(group),
-              onSelect: popup.setSelectedTabId,
-            }),
-          );
+        : h(DuplicateList, {
+            actionsDisabled: popup.settingsSaving,
+            groups: popup.groups,
+            selectedTabId: popup.selectedTabId,
+            onActivate: (tab) => void popup.activateTab(tab.id),
+            onClose: (tab) => void popup.closeRow(tab),
+            onCloseGroup: (group) => void popup.closeGroup(group),
+            onSelect: popup.setSelectedTabId,
+          }),
+    );
   } else {
     content =
       tabs.length === 0
@@ -109,75 +116,92 @@ export function App() {
   return h(
     "main",
     {
-      class: "popup",
+      class: `popup${duplicateMode ? " popup--settings" : ""}`,
       "data-density": popup.settings.density,
       "aria-busy": popup.loading,
     },
     h(
       "header",
-      { class: "popup-header" },
+      { class: "popup-topbar" },
       h(
-        "div",
-        { class: "popup-header-top" },
-        h(
-          "nav",
-          {
-            class: "mode-strip",
-            role: "tablist",
-            "aria-label": "Tab views",
-          },
-          MODES.map(({ label, value }) =>
-            h(
-              "button",
-              {
-                type: "button",
-                role: "tab",
-                key: value,
-                "aria-selected": popup.mode === value,
-                class: popup.mode === value ? "is-active" : undefined,
-                onClick: () => popup.selectMode(value),
-              },
-              label,
-            ),
+        "nav",
+        {
+          class: "mode-strip",
+          role: "tablist",
+          "aria-label": "Tab views",
+        },
+        MODES.map(({ label, value }) =>
+          h(
+            "button",
+            {
+              type: "button",
+              role: "tab",
+              key: value,
+              "aria-selected": popup.mode === value,
+              class: popup.mode === value ? "is-active" : undefined,
+              onClick: () => popup.selectMode(value),
+            },
+            label,
           ),
         ),
-        h(
-          "button",
-          {
-            type: "button",
-            class: "icon-button settings-button",
-            "aria-label": "Open settings",
-            title: "Open settings",
-            onClick: () => void popup.openOptions(),
-          },
-          h(SettingsIcon, null),
-        ),
       ),
-      h("input", {
-        ref: popup.searchInputRef,
-        class: "search-input",
-        type: "search",
-        "aria-label": "Search tabs",
-        placeholder: "Search tabs",
-        value: popup.query,
-        onInput: (event) => popup.setQuery(event.currentTarget.value),
-      }),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "icon-button settings-button",
+          "aria-label": "Open settings",
+          title: "Open settings",
+          onClick: () => void popup.openOptions(),
+        },
+        h(SettingsIcon, null),
+      ),
     ),
     h(
       "div",
-      { class: "popup-results" },
-      popup.errors.length > 0
-        ? h(
-            "div",
-            {
-              class: "inline-errors",
-              role: "status",
-              "aria-live": "polite",
-            },
-            popup.errors.map((error) => h("p", { key: error }, error)),
-          )
+      { class: "popup-content" },
+      h(
+        "section",
+        { class: "popup-primary" },
+        h(
+          "div",
+          { class: "popup-search" },
+          h("input", {
+            ref: popup.searchInputRef,
+            class: "search-input",
+            type: "search",
+            "aria-label": "Search tabs",
+            placeholder: "Search tabs",
+            value: popup.query,
+            onInput: (event) => popup.setQuery(event.currentTarget.value),
+          }),
+        ),
+        h(
+          "div",
+          { class: "popup-results" },
+          popup.errors.length > 0
+            ? h(
+                "div",
+                {
+                  class: "inline-errors",
+                  role: "status",
+                  "aria-live": "polite",
+                },
+                popup.errors.map((error) => h("p", { key: error }, error)),
+              )
+            : null,
+          content,
+        ),
+      ),
+      duplicateMode
+        ? h(DuplicateSettingsPane, {
+            disabled: popup.loading,
+            settings: popup.settings,
+            saving: popup.settingsSaving,
+            onChange: (patch) => void popup.saveDuplicateSettings(patch),
+            onOpenOptions: () => void popup.openOptions(),
+          })
         : null,
-      content,
     ),
   );
 }

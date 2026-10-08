@@ -1,4 +1,11 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/preact";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/preact";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -88,6 +95,9 @@ interface FakeBrowserOptions {
   closeResults?: CloseResult[];
   currentWindow?: browser.windows.Window | Error;
   openOptionsResult?: MessageResult<null>;
+  saveSettingsResult?:
+    | MessageResult<Settings>
+    | Promise<MessageResult<Settings>>;
   snapshotFailure?: Error;
 }
 
@@ -97,6 +107,7 @@ function installFakeBrowser({
   snapshots = [snapshot()],
   closeResults = [],
   openOptionsResult = { ok: true, data: null },
+  saveSettingsResult,
   snapshotFailure,
   currentWindow = {
     id: 1,
@@ -109,6 +120,7 @@ function installFakeBrowser({
   const requests: BackgroundRequest[] = [];
   let snapshotIndex = 0;
   let closeIndex = 0;
+  let storedSettings = settings;
 
   const fakeBrowser = {
     windows: {
@@ -168,6 +180,19 @@ function installFakeBrowser({
           }
           case "openOptions":
             return openOptionsResult;
+          case "saveSettings":
+            return (
+              saveSettingsResult ?? {
+                ok: true,
+                data: request.settings,
+              }
+            );
+          case "patchSettings":
+            if (saveSettingsResult) {
+              return saveSettingsResult;
+            }
+            storedSettings = { ...storedSettings, ...request.patch };
+            return { ok: true, data: storedSettings };
           default:
             throw new Error(`Unexpected request: ${request.type}`);
         }
@@ -206,8 +231,17 @@ describe("popup startup and modes", () => {
 
     const { container } = render(h(App, null));
 
-    expect(container.querySelector(".popup > .popup-header")).not.toBeNull();
-    expect(container.querySelector(".popup > .popup-results")).not.toBeNull();
+    expect(container.querySelector(".popup > .popup-topbar")).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".popup > .popup-content > .popup-primary > .popup-search",
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".popup > .popup-content > .popup-primary > .popup-results",
+      ),
+    ).not.toBeNull();
   });
 
   it("loads mode, settings, and a containing-window snapshot concurrently and defaults to Duplicates", async () => {
@@ -245,6 +279,9 @@ describe("popup startup and modes", () => {
     render(h(App, null));
 
     await waitFor(() => expect(requests).toHaveLength(3));
+    expect(
+      screen.queryByRole("button", { name: "Duplicate options" }),
+    ).toBeNull();
     expect(calls).toEqual([
       "getCurrent",
       "consumePopupMode",
@@ -421,26 +458,111 @@ describe("popup startup and modes", () => {
     ).toBeTruthy();
   });
 
-  it("opens Settings from a labeled compact header button", async () => {
-    const { requests } = installFakeBrowser();
+  it("keeps the global settings button while Duplicates uses its permanent side pane", async () => {
+    const { requests } = installFakeBrowser({ mode: "all-tabs" });
     const user = userEvent.setup();
 
     render(h(App, null));
 
-    const settingsButton = await screen.findByRole("button", {
+    const globalSettings = await screen.findByRole("button", {
       name: "Open settings",
     });
-    expect(settingsButton.getAttribute("title")).toBe("Open settings");
-    expect(settingsButton.querySelector("svg")).not.toBeNull();
-    expect(settingsButton.textContent).toBe("");
-    await user.click(settingsButton);
+    expect(
+      screen.queryByRole("button", { name: "Duplicate options" }),
+    ).toBeNull();
 
+    await user.click(globalSettings);
+    expect(requestOfType(requests, "openOptions")).toEqual([
+      { type: "openOptions" },
+    ]);
+
+    await user.click(screen.getByRole("tab", { name: "Duplicates" }));
+    expect(
+      screen.queryByRole("button", { name: "Duplicate options" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Duplicate settings" }),
+    ).toBeTruthy();
+  });
+
+  it("shows the duplicate side pane permanently below the top bar", async () => {
+    const { requests } = installFakeBrowser({ mode: "all-tabs" });
+    const user = userEvent.setup();
+
+    const { container } = render(h(App, null));
+
+    await screen.findByRole("listitem", { name: "Firefox Docs" });
+    expect(
+      screen.queryByRole("button", { name: "Duplicate options" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "Duplicates" }));
+
+    expect(
+      screen.getByRole("region", { name: "Duplicate settings" }),
+    ).toBeTruthy();
+    const content = container.querySelector(".popup > .popup-content");
+    expect(content).not.toBeNull();
+    expect(
+      content?.querySelector(":scope > .popup-primary .duplicate-toolbar"),
+    ).not.toBeNull();
+    const duplicateSettings = content?.querySelector(
+      ":scope > .duplicate-settings-pane",
+    );
+    expect(duplicateSettings).not.toBeNull();
+    expect(
+      container.querySelector(".popup > .popup-topbar"),
+    ).not.toBeNull();
+    expect(screen.getByRole("searchbox", { name: "Search tabs" })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("tab", { name: "Duplicates" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByText("1 group")).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Match duplicates by" }),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("spinbutton", {
+          name: "Title similarity",
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(requestOfType(requests, "openOptions")).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "More settings" }));
     expect(requestOfType(requests, "openOptions")).toEqual([
       { type: "openOptions" },
     ]);
   });
 
-  it("shows an open-Settings failure inline", async () => {
+  it("disables permanent duplicate controls until stored settings finish loading", () => {
+    render(h(App, null));
+
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Match duplicates by",
+        }) as HTMLSelectElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("keeps the permanent duplicate pane when the selected tab is clicked again", async () => {
+    installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    await user.click(screen.getByRole("tab", { name: "Duplicates" }));
+
+    expect(
+      screen.getByRole("region", { name: "Duplicate settings" }),
+    ).toBeTruthy();
+  });
+
+  it("shows an open-Settings failure inline from the compact pane", async () => {
     installFakeBrowser({
       openOptionsResult: {
         ok: false,
@@ -454,11 +576,412 @@ describe("popup startup and modes", () => {
     const user = userEvent.setup();
 
     render(h(App, null));
-    await user.click(
-      await screen.findByRole("button", { name: "Open settings" }),
-    );
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    await user.click(screen.getByRole("button", { name: "More settings" }));
 
     expect(await screen.findByText("Settings unavailable")).toBeTruthy();
+  });
+
+  it("saves duplicate mode immediately and recomputes groups with sanitized resources", async () => {
+    const tabs = [
+      tab(1, {
+        title: "Tool workspace",
+        url: "https://work.example/projects/tool/logs?session=one",
+      }),
+      tab(2, {
+        title: "Tool workspace",
+        url: "https://work.example/projects/tool/files/main/build?session=two",
+      }),
+    ];
+    const { requests } = installFakeBrowser({
+      snapshots: [snapshot(tabs)],
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+
+    expect(await screen.findByText("No duplicate tabs")).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Match duplicates by" }),
+      "url-or-title",
+    );
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toEqual([
+        {
+          type: "patchSettings",
+          patch: { titleMatchMode: "url-or-title" },
+        },
+      ]),
+    );
+
+    expect(screen.getByText("1 group")).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("enables and saves title similarity only for fuzzy title matching", async () => {
+    const { requests } = installFakeBrowser({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        titleMatchMode: "url-or-title",
+        titleSimilarityThreshold: 90,
+      },
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByText("1 group");
+
+    const threshold = screen.getByRole("spinbutton", {
+      name: "Title similarity",
+    }) as HTMLInputElement;
+    await waitFor(() => {
+      expect(threshold.disabled).toBe(false);
+      expect(threshold.value).toBe("90");
+    });
+
+    await user.clear(threshold);
+    await user.type(threshold, "96");
+    expect(threshold.value).toBe("96");
+    expect(requestOfType(requests, "patchSettings")).toEqual([]);
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toEqual([
+        {
+          type: "patchSettings",
+          patch: { titleSimilarityThreshold: 96 },
+        },
+      ]),
+    );
+  });
+
+  it("flushes a pending similarity edit when leaving Duplicates", async () => {
+    const { requests } = installFakeBrowser({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        titleMatchMode: "url-or-title",
+        titleSimilarityThreshold: 90,
+      },
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    const threshold = (await screen.findByRole("spinbutton", {
+      name: "Title similarity",
+    })) as HTMLInputElement;
+    await waitFor(() => expect(threshold.value).toBe("90"));
+    await user.clear(threshold);
+    await user.type(threshold, "96");
+    await user.click(screen.getByRole("tab", { name: "All Tabs" }));
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toContainEqual({
+        type: "patchSettings",
+        patch: { titleSimilarityThreshold: 96 },
+      }),
+    );
+  });
+
+  it("queues a similarity edit behind another settings save", async () => {
+    const firstSave = deferred<MessageResult<Settings>>();
+    const { requests } = installFakeBrowser({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        titleMatchMode: "url-or-title",
+        titleSimilarityThreshold: 90,
+      },
+      saveSettingsResult: firstSave.promise,
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByText("1 group");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Keep tab by age" }),
+      "newer",
+    );
+    expect(await screen.findByText("Saving…")).toBeTruthy();
+
+    const threshold = screen.getByRole("spinbutton", {
+      name: "Title similarity",
+    }) as HTMLInputElement;
+    expect(threshold.disabled).toBe(false);
+    await user.clear(threshold);
+    await user.type(threshold, "96");
+
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    expect(requestOfType(requests, "patchSettings")).toEqual([
+      {
+        type: "patchSettings",
+        patch: { agePreference: "newer" },
+      },
+    ]);
+
+    firstSave.resolve({
+      ok: true,
+      data: {
+        ...DEFAULT_SETTINGS,
+        titleMatchMode: "url-or-title",
+        titleSimilarityThreshold: 90,
+        agePreference: "newer",
+      },
+    });
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toEqual([
+        {
+          type: "patchSettings",
+          patch: { agePreference: "newer" },
+        },
+        {
+          type: "patchSettings",
+          patch: { titleSimilarityThreshold: 96 },
+        },
+      ]),
+    );
+  });
+
+  it("shows keep-priority and toolbar badge controls in the left pane", async () => {
+    installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Keep tab by age",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("older");
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Toolbar badge",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("duplicate-tabs");
+    for (const name of [
+      "Prefer HTTPS",
+      "Keep pinned tab",
+      "Keep active tab",
+      "Prefer tab in active window",
+    ]) {
+      expect(
+        (screen.getByRole("checkbox", { name }) as HTMLInputElement)
+          .checked,
+      ).toBe(true);
+    }
+  });
+
+  it("saves badge mode immediately from the compact pane", async () => {
+    const { requests } = installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const badgeMode = screen.getByRole("combobox", {
+      name: "Toolbar badge",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(badgeMode.disabled).toBe(false));
+    await user.selectOptions(
+      badgeMode,
+      "all-tabs",
+    );
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toContainEqual({
+        type: "patchSettings",
+        patch: { badgeCountMode: "all-tabs" },
+      }),
+    );
+  });
+
+  it("updates the retained tab when keep priority changes", async () => {
+    const { requests } = installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const agePreference = screen.getByRole("combobox", {
+      name: "Keep tab by age",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(agePreference.disabled).toBe(false));
+    await user.selectOptions(
+      agePreference,
+      "newer",
+    );
+
+    await waitFor(() =>
+      expect(requestOfType(requests, "patchSettings")).toContainEqual({
+        type: "patchSettings",
+        patch: { agePreference: "newer" },
+      }),
+    );
+    expect(
+      within(
+        screen.getByRole("listitem", { name: "Firefox Docs Copy" }),
+      ).getByText("Keep"),
+    ).toBeTruthy();
+  });
+
+  it("mutes only tabs currently considered for removal", async () => {
+    installFakeBrowser();
+
+    render(h(App, null));
+
+    const retained = await screen.findByRole("listitem", {
+      name: "Firefox Docs",
+    });
+    const removalCandidate = screen.getByRole("listitem", {
+      name: "Firefox Docs Copy",
+    });
+
+    expect(retained.classList.contains("is-removal-candidate")).toBe(false);
+    expect(
+      removalCandidate.classList.contains("is-removal-candidate"),
+    ).toBe(true);
+  });
+
+  it("restores duplicate settings when an immediate save fails", async () => {
+    installFakeBrowser({
+      saveSettingsResult: {
+        ok: false,
+        error: {
+          code: "browser-error",
+          message: "Settings could not be saved",
+          recoverable: true,
+        },
+      },
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const mode = screen.getByRole("combobox", {
+      name: "Match duplicates by",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(mode.disabled).toBe(false));
+    await user.selectOptions(mode, "url-or-title");
+
+    expect(await screen.findByText("Settings could not be saved")).toBeTruthy();
+    expect(mode.value).toBe("url-only");
+  });
+
+  it("keeps permanent duplicate settings visible while Escape clears search", async () => {
+    installFakeBrowser();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const search = screen.getByRole("searchbox", {
+      name: "Search tabs",
+    }) as HTMLInputElement;
+    await user.click(search);
+    await user.type(search, "docs");
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.getByRole("region", { name: "Duplicate settings" }),
+    ).toBeTruthy();
+    expect(search.value).toBe("");
+    expect(closeSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves duplicate-settings keyboard events to their native controls", async () => {
+    const { requests } = installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const mode = screen.getByRole("combobox", {
+      name: "Match duplicates by",
+    });
+
+    expect(fireEvent.keyDown(mode, { key: "ArrowDown" })).toBe(true);
+    expect(fireEvent.keyDown(mode, { key: "Enter" })).toBe(true);
+    expect(requestOfType(requests, "activateTab")).toEqual([]);
+  });
+
+  it("keeps duplicate-list keyboard navigation active while settings are open", async () => {
+    installFakeBrowser();
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByText("1 group");
+
+    const first = screen.getByRole("listitem", {
+      name: "Firefox Docs",
+    });
+    const second = screen.getByRole("listitem", {
+      name: "Firefox Docs Copy",
+    });
+    first.focus();
+    await user.keyboard("{ArrowDown}");
+
+    expect(second.getAttribute("data-selected")).toBe("true");
+  });
+
+  it("blocks duplicate close actions while matching settings are saving", async () => {
+    const save = deferred<MessageResult<Settings>>();
+    const { requests } = installFakeBrowser({
+      saveSettingsResult: save.promise,
+    });
+    const user = userEvent.setup();
+
+    render(h(App, null));
+    await screen.findByRole("region", { name: "Duplicate settings" });
+    const matchMode = screen.getByRole("combobox", {
+      name: "Match duplicates by",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(matchMode.disabled).toBe(false));
+    await user.selectOptions(
+      matchMode,
+      "url-or-title",
+    );
+    expect(await screen.findByText("Saving…")).toBeTruthy();
+
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Close all 1 duplicate",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Close 1 duplicate in group",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        within(
+        screen.getByRole("listitem", { name: "Firefox Docs Copy" }),
+        ).getByRole("button", {
+          name: "Close Firefox Docs Copy",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    screen.getByRole("listitem", { name: "Firefox Docs Copy" }).focus();
+    await user.keyboard("{Delete}");
+    expect(requestOfType(requests, "closeTabs")).toEqual([]);
+    expect(requestOfType(requests, "closeDuplicateGroups")).toEqual([]);
+
+    save.resolve({
+      ok: true,
+      data: {
+        ...DEFAULT_SETTINGS,
+        titleMatchMode: "url-or-title",
+      },
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Saving…")).toBeNull(),
+    );
   });
 
   it("shows mode-specific empty states", async () => {
@@ -1030,6 +1553,34 @@ describe("popup theme and density", () => {
     expect(popupCss).toMatch(
       /\.popup\s*\{[^}]*width:\s*460px;[^}]*border-radius:\s*14px;[^}]*overflow:\s*hidden;/,
     );
+    expect(popupCss).toMatch(
+      /\.popup--settings\s*\{[^}]*width:\s*740px;/,
+    );
+    expect(popupCss).toMatch(
+      /body:has\(\.popup--settings\)\s*\{[^}]*width:\s*740px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup-content\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*460px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup--settings \.popup-content\s*\{[^}]*grid-template-columns:\s*280px 460px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.duplicate-settings-pane\s*\{[^}]*grid-column:\s*1;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup--settings \.popup-primary\s*\{[^}]*grid-column:\s*2;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup-topbar\s*\{[^}]*display:\s*flex;[^}]*border-bottom:\s*1px solid var\(--separator\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup--settings \.popup-topbar\s*\{[^}]*padding-left:\s*290px;/,
+    );
+    expect(popupCss).not.toContain("@media (max-width: 739px)");
+    expect(popupCss).not.toMatch(
+      /\.duplicate-settings-pane\s*\{[^}]*grid-row:\s*1\s*\/\s*span\s*2/,
+    );
     expect(popupCss).not.toMatch(/\.popup\s*\{[^}]*overflow-y:/);
     expect(popupCss).toMatch(
       /\.popup-results\s*\{[^}]*max-height:\s*480px;[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*none;/,
@@ -1059,6 +1610,10 @@ describe("popup theme and density", () => {
       /\.tab-row\.is-selected\s*\{[^}]*background:\s*var\(--popup-selection\)/,
     );
     expect(popupCss).toMatch(
+      /\.tab-row\.is-removal-candidate:not\(\.is-selected\):not\(:hover\) \.tab-title,[\s\S]*\.favicon\s*\{[^}]*opacity:/,
+    );
+    expect(popupCss).not.toContain("text-decoration: line-through");
+    expect(popupCss).toMatch(
       /\.mode-strip button\.is-active\s*\{[^}]*background:\s*var\(--popup-selection\)/,
     );
     expect(popupCss).toMatch(
@@ -1067,8 +1622,11 @@ describe("popup theme and density", () => {
     expect(popupCss).toMatch(
       /\.mode-strip button,[\s\S]*\.icon-button\s*\{[^}]*border-radius:\s*6px;/,
     );
+    expect(popupCss).not.toMatch(
+      /\.mode-strip button:hover[\s\S]*?\{[^}]*background:\s*var\(--popup-hover\)/,
+    );
     expect(popupCss).toMatch(
-      /\.mode-strip button:hover,[\s\S]*\.icon-button:hover\s*\{[^}]*background:\s*var\(--popup-hover\)/,
+      /\.group-close:hover,[\s\S]*\.icon-button:hover\s*\{[^}]*background:\s*var\(--popup-hover\)/,
     );
     expect(popupCss).toMatch(
       /\.search-input\s*\{[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--popup-surface\)/,
@@ -1080,7 +1638,7 @@ describe("popup theme and density", () => {
       /\.inline-errors\s*\{[^}]*border-bottom:\s*0;/,
     );
     expect(popupCss).toMatch(
-      /\.popup-header\s*\{[^}]*padding:\s*8px 10px 10px;[^}]*border-bottom:\s*1px solid var\(--separator\)/,
+      /\.popup-search\s*\{[^}]*padding:\s*8px 10px 10px;[^}]*border-bottom:\s*1px solid var\(--separator\)/,
     );
     expect(popupCss).toMatch(
       /\.section-label\s*\{[^}]*padding:\s*6px 12px;[^}]*border-bottom:\s*0;[^}]*background:\s*var\(--popup-surface\)/,
@@ -1098,7 +1656,10 @@ describe("popup theme and density", () => {
       /\.icon-button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/,
     );
     expect(popupCss).toMatch(
-      /\.search-input:focus-visible,[\s\S]*\.tab-row:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--popup-focus\)/,
+      /\.search-input:focus-visible,[\s\S]*\.tab-row:focus-visible,[\s\S]*\{[^}]*outline:\s*2px solid var\(--popup-focus\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.duplicate-settings-control select:focus-visible,[\s\S]*\.duplicate-settings-control input:focus-visible[\s\S]*\{[^}]*outline:\s*2px solid var\(--popup-focus\)/,
     );
     expect(popupCss).toMatch(
       /\.duplicate-count\s*\{[^}]*color:\s*var\(--muted-text\)/,
@@ -1107,6 +1668,34 @@ describe("popup theme and density", () => {
       /\.tab-row\.is-selected \.duplicate-count\s*\{[^}]*color:\s*inherit;/,
     );
     expect(popupCss).not.toContain("text-transform: uppercase");
+    expect(popupCss).toMatch(
+      /\.duplicate-settings-pane\s*\{[^}]*padding:\s*12px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.duplicate-settings-pane\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1;[^}]*border-right:\s*1px solid var\(--separator\)/,
+    );
+    expect(popupCss).toMatch(
+      /\.duplicate-settings-control\s+(?:select|input)\s*\{[^}]*border-radius:\s*8px;/,
+    );
+    expect(popupCss).not.toMatch(
+      /\.duplicate-settings-pane\s*\{[^}]*transition:/,
+    );
     expect(`${themeCss}\n${popupCss}`).not.toMatch(/purple|pink/i);
+  });
+
+  it("uses a monochrome Firefox-theme-aware toolbar icon", () => {
+    for (const size of [16, 32, 48, 96]) {
+      const icon = readFileSync(
+        resolve(process.cwd(), `icons/icon-${size}.svg`),
+        "utf8",
+      );
+
+      expect(icon).toContain('class="icon"');
+      expect(icon).toContain("@media (prefers-color-scheme: dark)");
+      expect(icon).toContain('x="1.25"');
+      expect(icon).toContain('width="10.5"');
+      expect(icon).not.toMatch(/#0060df|#ffffff/i);
+      expect(icon).not.toMatch(/<rect[^>]+x="1"[^>]+y="1"[^>]+width="14"/);
+    }
   });
 });

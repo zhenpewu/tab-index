@@ -1,5 +1,6 @@
 import type {
   AgePreference,
+  BadgeCountMode,
   ContainerScope,
   Density,
   DuplicateScope,
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   keepActiveTab: true,
   agePreference: "older",
   prioritizeActiveWindow: true,
+  badgeCountMode: "duplicate-tabs",
 });
 
 const DENSITIES: readonly Density[] = ["comfortable", "compact", "dense"];
@@ -41,6 +43,11 @@ const TITLE_MATCH_MODES: readonly TitleMatchMode[] = [
   "url-and-title",
 ];
 const AGE_PREFERENCES: readonly AgePreference[] = ["older", "newer"];
+const BADGE_COUNT_MODES: readonly BadgeCountMode[] = [
+  "all-tabs",
+  "current-window-tabs",
+  "duplicate-tabs",
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -134,6 +141,11 @@ export function mergeSettings(value: unknown): Settings {
     prioritizeActiveWindow: booleanValue(
       value.prioritizeActiveWindow,
       DEFAULT_SETTINGS.prioritizeActiveWindow,
+    ),
+    badgeCountMode: enumValue(
+      value.badgeCountMode,
+      BADGE_COUNT_MODES,
+      DEFAULT_SETTINGS.badgeCountMode,
     ),
   };
 }

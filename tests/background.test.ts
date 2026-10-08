@@ -63,6 +63,8 @@ function firefoxTab(
 
 function makeFakeBrowser(initialTabs: browser.tabs.Tab[] = []) {
   const runtimeOnMessage = fakeEvent();
+  const runtimeOnInstalled = fakeEvent();
+  const runtimeOnStartup = fakeEvent();
   const commandsOnCommand = fakeEvent();
   const tabsOnCreated = fakeEvent();
   const tabsOnUpdated = fakeEvent();
@@ -90,12 +92,15 @@ function makeFakeBrowser(initialTabs: browser.tabs.Tab[] = []) {
     focusedWindowId: 1,
     windowUpdateError: undefined as Error | undefined,
     local: {} as Record<string, unknown>,
+    localWriteGates: [] as ReturnType<typeof deferred<void>>[],
     session: {} as Record<string, unknown>,
     sessionWriteGates: [] as ReturnType<typeof deferred<void>>[],
     popupOpenError: undefined as Error | undefined,
     popupOpenPromises: [] as Promise<boolean>[],
     popupOpenCount: 0,
     optionsOpenCount: 0,
+    badgeText: "",
+    badgeBackgroundColor: undefined as string | undefined,
     lastTabQuery: undefined as Record<string, unknown> | undefined,
     removeErrors: new Map<number, Error>(),
   };
@@ -196,7 +201,7 @@ function makeFakeBrowser(initialTabs: browser.tabs.Tab[] = []) {
       onFocusChanged: windowsOnFocusChanged,
     },
     storage: {
-      local: storageArea(state.local),
+      local: storageArea(state.local, state.localWriteGates),
       session: storageArea(state.session, state.sessionWriteGates),
     },
     action: {
@@ -211,9 +216,17 @@ function makeFakeBrowser(initialTabs: browser.tabs.Tab[] = []) {
         }
         return true;
       },
+      async setBadgeText(details: { text: string }) {
+        state.badgeText = details.text;
+      },
+      async setBadgeBackgroundColor(details: { color: string }) {
+        state.badgeBackgroundColor = details.color;
+      },
     },
     runtime: {
       onMessage: runtimeOnMessage,
+      onInstalled: runtimeOnInstalled,
+      onStartup: runtimeOnStartup,
       async openOptionsPage() {
         state.optionsOpenCount += 1;
       },
@@ -228,6 +241,8 @@ function makeFakeBrowser(initialTabs: browser.tabs.Tab[] = []) {
     state,
     events: {
       runtimeOnMessage,
+      runtimeOnInstalled,
+      runtimeOnStartup,
       commandsOnCommand,
       tabsOnCreated,
       tabsOnUpdated,
@@ -572,6 +587,120 @@ describe("createBackgroundHandlers", () => {
     );
   });
 
+  it("serializes settings patches against the latest stored values", async () => {
+    const fake = makeFakeBrowser();
+    const firstWrite = deferred<void>();
+    fake.state.localWriteGates.push(firstWrite);
+    const handlers = createBackgroundHandlers(fake.api);
+
+    const densitySave = handlers.handleMessage({
+      type: "patchSettings",
+      patch: { density: "dense" },
+    });
+    await Promise.resolve();
+    const badgeSave = handlers.handleMessage({
+      type: "patchSettings",
+      patch: { badgeCountMode: "all-tabs" },
+    });
+
+    firstWrite.resolve();
+    await expect(Promise.all([densitySave, badgeSave])).resolves.toEqual([
+      {
+        ok: true,
+        data: { ...DEFAULT_SETTINGS, density: "dense" },
+      },
+      {
+        ok: true,
+        data: {
+          ...DEFAULT_SETTINGS,
+          density: "dense",
+          badgeCountMode: "all-tabs",
+        },
+      },
+    ]);
+    expect(fake.state.local[SETTINGS_STORAGE_KEY]).toEqual({
+      ...DEFAULT_SETTINGS,
+      density: "dense",
+      badgeCountMode: "all-tabs",
+    });
+  });
+
+  it("shows the focused window's closable duplicate count in the toolbar badge", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, {
+        url: "https://work.example/project",
+        lastAccessed: 100,
+      }),
+      firefoxTab(2, 1, {
+        url: "https://work.example/project",
+        lastAccessed: 200,
+      }),
+      firefoxTab(3, 2, {
+        url: "https://other.example/project",
+        lastAccessed: 100,
+      }),
+      firefoxTab(4, 2, {
+        url: "https://other.example/project",
+        lastAccessed: 200,
+      }),
+    ]);
+    const handlers = createBackgroundHandlers(fake.api);
+
+    await handlers.refreshBadge(1);
+
+    expect(fake.state.badgeText).toBe("1");
+    expect(fake.state.badgeBackgroundColor).toBe("#5b5b66");
+  });
+
+  it("shows every normal-window tab when the badge mode is All tabs", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1),
+      firefoxTab(2, 1),
+      firefoxTab(3, 2),
+      firefoxTab(4, 2),
+    ]);
+    fake.state.local[SETTINGS_STORAGE_KEY] = {
+      ...DEFAULT_SETTINGS,
+      badgeCountMode: "all-tabs",
+    };
+    const handlers = createBackgroundHandlers(fake.api);
+
+    await handlers.refreshBadge(1);
+
+    expect(fake.state.badgeText).toBe("4");
+  });
+
+  it("shows only the focused window's tabs in Current window mode", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1),
+      firefoxTab(2, 1),
+      firefoxTab(3, 2),
+      firefoxTab(4, 2),
+    ]);
+    fake.state.local[SETTINGS_STORAGE_KEY] = {
+      ...DEFAULT_SETTINGS,
+      badgeCountMode: "current-window-tabs",
+    };
+    const handlers = createBackgroundHandlers(fake.api);
+
+    await handlers.refreshBadge(1);
+
+    expect(fake.state.badgeText).toBe("2");
+  });
+
+  it("clears the toolbar badge when the focused window has no duplicates", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, { url: "https://work.example/one" }),
+      firefoxTab(2, 1, { url: "https://work.example/two" }),
+    ]);
+    const handlers = createBackgroundHandlers(fake.api);
+    fake.state.badgeText = "4";
+
+    await handlers.refreshBadge(1);
+
+    expect(fake.state.badgeText).toBe("");
+  });
+
   it("atomically consumes one popup mode and defaults later opens to duplicates", async () => {
     const fake = makeFakeBrowser();
     fake.state.session[POPUP_MODE_STORAGE_KEY] = {
@@ -698,12 +827,17 @@ describe("createBackgroundHandlers", () => {
 });
 
 describe("background registration", () => {
-  it("registers runtime, command, and generation listeners synchronously", () => {
-    const fake = makeFakeBrowser([firefoxTab(1, 1)]);
+  it("registers runtime, command, lifecycle, and generation listeners synchronously", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, { url: "https://work.example/project" }),
+      firefoxTab(2, 1, { url: "https://work.example/project" }),
+    ]);
 
     registerBackground(fake.api);
 
     expect(fake.events.runtimeOnMessage.listeners).toHaveLength(1);
+    expect(fake.events.runtimeOnInstalled.listeners).toHaveLength(1);
+    expect(fake.events.runtimeOnStartup.listeners).toHaveLength(1);
     expect(fake.events.commandsOnCommand.listeners).toHaveLength(1);
     expect(fake.events.tabsOnCreated.listeners).toHaveLength(1);
     expect(fake.events.tabsOnUpdated.listeners).toHaveLength(1);
@@ -712,6 +846,7 @@ describe("background registration", () => {
     expect(fake.events.windowsOnCreated.listeners).toHaveLength(1);
     expect(fake.events.windowsOnRemoved.listeners).toHaveLength(1);
     expect(fake.events.windowsOnFocusChanged.listeners).toHaveLength(1);
+    await vi.waitFor(() => expect(fake.state.badgeText).toBe("1"));
   });
 
   it("persists normal focus and ignores later non-normal focus", async () => {
@@ -737,13 +872,14 @@ describe("background registration", () => {
     await Promise.all(fake.events.windowsOnFocusChanged.emit(99));
     expect(fake.state.session[LAST_NORMAL_WINDOW_ID_STORAGE_KEY]).toBe(2);
 
+    const getAllCountBeforeSnapshot = fake.state.windowGetAllCount;
     const response = await runtimeListener({ type: "getSnapshot" });
 
     expect(response).toMatchObject({
       ok: true,
       data: { currentWindowId: 2 },
     });
-    expect(fake.state.windowGetAllCount).toBe(0);
+    expect(fake.state.windowGetAllCount).toBe(getAllCountBeforeSnapshot);
   });
 
   it("tracks generation internally without closing tabs or caching snapshots", async () => {
@@ -769,6 +905,27 @@ describe("background registration", () => {
     if (typeof response === "object" && response !== null && "data" in response) {
       expect(response.data).not.toHaveProperty("revision");
     }
+  });
+
+  it("refreshes the duplicate badge after tab changes", async () => {
+    const fake = makeFakeBrowser([
+      firefoxTab(1, 1, {
+        url: "https://work.example/project",
+        lastAccessed: 100,
+      }),
+      firefoxTab(2, 1, {
+        url: "https://work.example/project",
+        lastAccessed: 200,
+      }),
+    ]);
+    const registered = registerBackground(fake.api);
+    await registered.refreshBadge(1);
+    expect(fake.state.badgeText).toBe("1");
+
+    fake.state.tabs = [firefoxTab(1, 1, { url: "https://work.example/project" })];
+    await Promise.all(fake.events.tabsOnRemoved.emit(2, { windowId: 1 }));
+
+    expect(fake.state.badgeText).toBe("");
   });
 
   it("registers listeners during module evaluation", async () => {

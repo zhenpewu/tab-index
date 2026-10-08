@@ -7,6 +7,7 @@ import type {
 } from "./usePopupState";
 
 interface DuplicateListProps {
+  actionsDisabled?: boolean;
   groups: PopupDuplicateGroup[];
   selectedTabId: number | null;
   onActivate(tab: PopupTab): void;
@@ -29,6 +30,7 @@ function groupLabel(group: PopupDuplicateGroup): string {
 }
 
 export function DuplicateList({
+  actionsDisabled = false,
   groups,
   selectedTabId,
   onActivate,
@@ -40,6 +42,7 @@ export function DuplicateList({
     "div",
     { class: "duplicate-list" },
     groups.map((group) => {
+      const closableTabIds = new Set(group.closableTabIds);
       const label = groupLabel(group);
       const closeCount = group.closableTabIds.length;
       const closeLabel = `Close ${closeCount} ${
@@ -65,7 +68,7 @@ export function DuplicateList({
               class: "group-close",
               "aria-label": closeLabel,
               title: closeLabel,
-              disabled: closeCount === 0,
+              disabled: actionsDisabled || closeCount === 0,
               onClick: () => onCloseGroup(group),
             },
             `Close ${closeCount}`,
@@ -83,6 +86,8 @@ export function DuplicateList({
               onClose,
               onReviewDuplicates: () => undefined,
               onSelect,
+              actionsDisabled,
+              removalCandidate: closableTabIds.has(tab.id),
             }),
           ),
         ),

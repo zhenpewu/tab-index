@@ -24,6 +24,7 @@ describe("DEFAULT_SETTINGS", () => {
       keepActiveTab: true,
       agePreference: "older",
       prioritizeActiveWindow: true,
+      badgeCountMode: "duplicate-tabs",
     });
   });
 });
@@ -37,6 +38,7 @@ describe("mergeSettings", () => {
         containerScope: "sometimes",
         titleMatchMode: "title-only",
         agePreference: "random",
+        badgeCountMode: "visible-tabs",
       }),
     ).toMatchObject({
       density: "compact",
@@ -44,6 +46,7 @@ describe("mergeSettings", () => {
       containerScope: "across-containers",
       titleMatchMode: "url-only",
       agePreference: "older",
+      badgeCountMode: "duplicate-tabs",
     });
   });
 
@@ -99,6 +102,7 @@ describe("mergeSettings", () => {
       keepActiveTab: false,
       agePreference: "newer",
       prioritizeActiveWindow: false,
+      badgeCountMode: "all-tabs",
     };
 
     expect(mergeSettings(value)).toEqual(value);

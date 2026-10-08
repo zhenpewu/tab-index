@@ -4,6 +4,8 @@ import { useState } from "preact/hooks";
 import type { PopupTab } from "./usePopupState";
 
 interface TabRowProps {
+  actionsDisabled?: boolean;
+  removalCandidate?: boolean;
   selectedTabId: number | null;
   showDuplicateCount?: boolean;
   tab: PopupTab;
@@ -49,6 +51,8 @@ function CloseIcon() {
 }
 
 export function TabRow({
+  actionsDisabled = false,
+  removalCandidate = false,
   selectedTabId,
   showDuplicateCount = false,
   tab,
@@ -64,7 +68,9 @@ export function TabRow({
     "div",
     {
       id: `popup-tab-${tab.id}`,
-      class: `tab-row${selected ? " is-selected" : ""}`,
+      class: `tab-row${selected ? " is-selected" : ""}${
+        removalCandidate ? " is-removal-candidate" : ""
+      }`,
       role: "listitem",
       "aria-label": label,
       "aria-current": selected ? "true" : undefined,
@@ -105,6 +111,7 @@ export function TabRow({
         class: "icon-button close-tab",
         "aria-label": `Close ${tab.title || tab.url || `tab ${tab.id}`}`,
         title: "Close tab",
+        disabled: actionsDisabled,
         onClick: (event: MouseEvent) => {
           event.stopPropagation();
           onClose(tab);

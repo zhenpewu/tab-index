@@ -33,19 +33,24 @@ function installFakeBrowser({
   saveHandler,
 }: FakeBrowserOptions = {}) {
   const requests: BackgroundRequest[] = [];
+  let storedSettings = settings;
 
   vi.stubGlobal("browser", {
     runtime: {
       async sendMessage(request: BackgroundRequest) {
         requests.push(request);
         if (request.type === "getSettings") {
-          return loadResult ?? { ok: true, data: settings };
+          return loadResult ?? { ok: true, data: storedSettings };
         }
-        if (request.type === "saveSettings") {
-          if (saveHandler) {
-            return saveHandler(request.settings);
+        if (request.type === "patchSettings") {
+          const next = { ...storedSettings, ...request.patch };
+          const response = saveHandler
+            ? await saveHandler(next)
+            : saveResult ?? { ok: true as const, data: next };
+          if (response.ok) {
+            storedSettings = response.data;
           }
-          return saveResult ?? { ok: true, data: request.settings };
+          return response;
         }
         throw new Error(`Unexpected request: ${request.type}`);
       },
@@ -73,8 +78,8 @@ function saveRequests(requests: BackgroundRequest[]) {
   return requests.filter(
     (
       request,
-    ): request is Extract<BackgroundRequest, { type: "saveSettings" }> =>
-      request.type === "saveSettings",
+    ): request is Extract<BackgroundRequest, { type: "patchSettings" }> =>
+      request.type === "patchSettings",
   );
 }
 
@@ -107,6 +112,7 @@ describe("settings page", () => {
       keepActiveTab: false,
       agePreference: "newer",
       prioritizeActiveWindow: false,
+      badgeCountMode: "all-tabs",
     };
     installFakeBrowser({ settings });
 
@@ -198,6 +204,10 @@ describe("settings page", () => {
         }) as HTMLInputElement
       ).checked,
     ).toBe(false);
+    expect(
+      (screen.getByRole("radio", { name: "All tabs" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
   });
 
   it("keeps advanced rules collapsed by default and reveals their loaded values", async () => {
@@ -245,7 +255,7 @@ describe("settings page", () => {
     ).toBeTruthy();
   });
 
-  it("maps every edited control to the exact complete settings payload", async () => {
+  it("maps every edited control to the exact settings patch", async () => {
     const { requests } = installFakeBrowser();
     const user = userEvent.setup();
     render(h(App, null));
@@ -319,6 +329,9 @@ describe("settings page", () => {
         name: "Prefer tab in active window",
       }),
     );
+    await user.click(
+      screen.getByRole("radio", { name: "Current window tabs" }),
+    );
 
     expect(form.getAttribute("data-density")).toBe("dense");
     expect(
@@ -331,7 +344,7 @@ describe("settings page", () => {
 
     await user.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(saveRequests(requests)).toHaveLength(1));
-    expect(saveRequests(requests)[0]?.settings).toEqual({
+    expect(saveRequests(requests)[0]?.patch).toEqual({
       density: "dense",
       scope: "all-windows",
       containerScope: "within-container",
@@ -352,6 +365,7 @@ describe("settings page", () => {
       keepActiveTab: false,
       agePreference: "newer",
       prioritizeActiveWindow: false,
+      badgeCountMode: "current-window-tabs",
     });
   });
 
@@ -446,6 +460,12 @@ describe("settings page", () => {
       key: "prioritizeActiveWindow",
       value: false,
     },
+    {
+      control: "All tabs",
+      role: "radio",
+      key: "badgeCountMode",
+      value: "all-tabs",
+    },
   ] as const)(
     "maps $control only to $key",
     async ({ control, role, key, value }) => {
@@ -461,10 +481,7 @@ describe("settings page", () => {
       await user.click(screen.getByRole("button", { name: "Save settings" }));
 
       await waitFor(() => expect(saveRequests(requests)).toHaveLength(1));
-      expect(saveRequests(requests)[0]?.settings).toEqual({
-        ...initialSettings,
-        [key]: value,
-      });
+      expect(saveRequests(requests)[0]?.patch).toEqual({ [key]: value });
     },
   );
 
@@ -606,8 +623,14 @@ describe("settings page", () => {
 
   it("preserves edits made during save and blocks a second concurrent save", async () => {
     const pendingSave = deferred<MessageResult<Settings>>();
+    let saveCount = 0;
     const { requests } = installFakeBrowser({
-      saveHandler: () => pendingSave.promise,
+      saveHandler: (next) => {
+        saveCount += 1;
+        return saveCount === 1
+          ? pendingSave.promise
+          : Promise.resolve({ ok: true, data: next });
+      },
     });
     const user = userEvent.setup();
     render(h(App, null));
@@ -627,7 +650,10 @@ describe("settings page", () => {
 
     pendingSave.resolve({
       ok: true,
-      data: { ...DEFAULT_SETTINGS },
+      data: {
+        ...DEFAULT_SETTINGS,
+        badgeCountMode: "all-tabs",
+      },
     });
 
     await waitFor(() =>
@@ -636,6 +662,10 @@ describe("settings page", () => {
           .checked,
       ).toBe(true),
     );
+    expect(
+      (screen.getByRole("radio", { name: "All tabs" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
     expect(screen.queryByText("Saved")).toBeNull();
     expect(
       (screen.getByRole("button", {
@@ -643,6 +673,10 @@ describe("settings page", () => {
       }) as HTMLButtonElement).disabled,
     ).toBe(false);
     expect(saveRequests(requests)).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(saveRequests(requests)).toHaveLength(2));
+    expect(saveRequests(requests)[1]?.patch).toEqual({ density: "dense" });
   });
 
   it.each(["resolve", "reject"] as const)(
@@ -681,7 +715,7 @@ describe("settings page", () => {
     },
   );
 
-  it("sends the complete valid settings and shows a compact saved state", async () => {
+  it("sends changed valid settings and shows a compact saved state", async () => {
     const { requests } = installFakeBrowser();
     const user = userEvent.setup();
     render(h(App, null));
@@ -717,8 +751,7 @@ describe("settings page", () => {
     await user.click(screen.getByRole("button", { name: "Save settings" }));
 
     await waitFor(() => expect(saveRequests(requests)).toHaveLength(1));
-    expect(saveRequests(requests)[0]?.settings).toEqual({
-      ...DEFAULT_SETTINGS,
+    expect(saveRequests(requests)[0]?.patch).toEqual({
       density: "comfortable",
       scope: "all-windows",
       containerScope: "within-container",

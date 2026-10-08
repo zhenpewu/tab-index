@@ -19,6 +19,7 @@ import {
 import { DEFAULT_SETTINGS } from "../domain/settings";
 import type {
   AgePreference,
+  BadgeCountMode,
   ContainerScope,
   Density,
   DuplicateScope,
@@ -26,7 +27,10 @@ import type {
   Settings,
   TitleMatchMode,
 } from "../domain/types";
-import { sendBackgroundMessage } from "../shared/messages";
+import {
+  sendBackgroundMessage,
+  type SettingsPatch,
+} from "../shared/messages";
 
 interface ChoiceProps<T extends string> {
   checked: boolean;
@@ -131,6 +135,33 @@ function messageFrom(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function changedSettings(
+  persisted: Settings,
+  draft: Settings,
+): SettingsPatch {
+  return Object.fromEntries(
+    (Object.keys(draft) as Array<keyof Settings>)
+      .filter((key) => !Object.is(persisted[key], draft[key]))
+      .map((key) => [key, draft[key]]),
+  ) as SettingsPatch;
+}
+
+function rebaseLaterEdits(
+  persisted: Settings,
+  draft: Settings,
+  fieldRevisions: ReadonlyMap<keyof Settings, number>,
+  savedRevision: number,
+): Settings {
+  const laterEdits = Object.fromEntries(
+    (Object.keys(draft) as Array<keyof Settings>)
+      .filter(
+        (key) => (fieldRevisions.get(key) ?? 0) > savedRevision,
+      )
+      .map((key) => [key, draft[key]]),
+  ) as SettingsPatch;
+  return { ...persisted, ...laterEdits };
+}
+
 export function App() {
   const [settings, setSettings] = useState<Settings>({
     ...DEFAULT_SETTINGS,
@@ -140,7 +171,9 @@ export function App() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>({ type: "idle" });
   const draftRevision = useRef(0);
+  const fieldRevisions = useRef(new Map<keyof Settings, number>());
   const saveInFlight = useRef(false);
+  const persistedSettings = useRef<Settings>({ ...DEFAULT_SETTINGS });
   const savedTimer = useRef<number | undefined>(undefined);
   const mounted = useRef(true);
 
@@ -160,6 +193,7 @@ export function App() {
           return;
         }
         if (response.ok) {
+          persistedSettings.current = response.data;
           setSettings(response.data);
         } else {
           setLoadError(response.error.message);
@@ -204,6 +238,7 @@ export function App() {
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
     draftRevision.current += 1;
+    fieldRevisions.current.set(key, draftRevision.current);
     clearSavedTimer();
     setSettings((current) => ({ ...current, [key]: value }));
     setSaveState((current) =>
@@ -225,13 +260,26 @@ export function App() {
     setSaveState({ type: "saving" });
     try {
       const response = await sendBackgroundMessage({
-        type: "saveSettings",
-        settings,
+        type: "patchSettings",
+        patch: changedSettings(persistedSettings.current, settings),
       });
       if (!mounted.current) {
         return;
       }
+      if (response.ok) {
+        persistedSettings.current = response.data;
+      }
       if (draftRevision.current !== revision) {
+        if (response.ok) {
+          setSettings((current) =>
+            rebaseLaterEdits(
+              response.data,
+              current,
+              fieldRevisions.current,
+              revision,
+            ),
+          );
+        }
         setSaveState({ type: "idle" });
         return;
       }
@@ -335,6 +383,45 @@ export function App() {
             value: "dense",
             checked: settings.density === "dense",
             onChange: (value) => update("density", value),
+          }),
+        ),
+      ),
+      h(
+        "fieldset",
+        null,
+        h("legend", null, "Toolbar badge"),
+        h(
+          "p",
+          { class: "section-help" },
+          "Choose the number shown on the Tab Index toolbar icon.",
+        ),
+        h(
+          "div",
+          {
+            class: "choice-column",
+            role: "radiogroup",
+            "aria-label": "Toolbar badge",
+          },
+          h(Choice<BadgeCountMode>, {
+            name: "badge-count-mode",
+            label: "All tabs",
+            value: "all-tabs",
+            checked: settings.badgeCountMode === "all-tabs",
+            onChange: (value) => update("badgeCountMode", value),
+          }),
+          h(Choice<BadgeCountMode>, {
+            name: "badge-count-mode",
+            label: "Current window tabs",
+            value: "current-window-tabs",
+            checked: settings.badgeCountMode === "current-window-tabs",
+            onChange: (value) => update("badgeCountMode", value),
+          }),
+          h(Choice<BadgeCountMode>, {
+            name: "badge-count-mode",
+            label: "Duplicate tabs",
+            value: "duplicate-tabs",
+            checked: settings.badgeCountMode === "duplicate-tabs",
+            onChange: (value) => update("badgeCountMode", value),
           }),
         ),
       ),
