@@ -106,6 +106,19 @@ describe("release asset copying", () => {
 });
 
 describe("Firefox minimum versions", () => {
+  it("uses a neutral stable extension ID", () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, "../manifest.json"), "utf8"),
+    );
+
+    expect(manifest.browser_specific_settings.gecko.id).toBe(
+      "{b4aaea8c-c8f6-4403-b8e3-2da282ef51a7}",
+    );
+    expect(manifest.browser_specific_settings.gecko.id).not.toContain(
+      "zhenpewu",
+    );
+  });
+
   it("targets Firefox 142 without advertising untested Android support", () => {
     const manifest = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../manifest.json"), "utf8"),
