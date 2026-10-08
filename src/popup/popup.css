@@ -6,7 +6,6 @@ html,
 body {
   margin: 0;
   width: 420px;
-  max-width: 100vw;
   background: var(--background);
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -27,8 +26,7 @@ button {
 
 .popup {
   width: 420px;
-  max-width: 100vw;
-  max-height: min(600px, 80vh);
+  max-height: 600px;
   overflow-y: auto;
   background: var(--surface);
   font-size: var(--font-size);

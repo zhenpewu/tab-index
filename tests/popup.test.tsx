@@ -979,8 +979,19 @@ describe("popup theme and density", () => {
     expect(themeCss).toContain("@media (prefers-color-scheme: dark)");
     expect(themeCss).toContain("@media (prefers-reduced-motion: reduce)");
     expect(popupCss).toMatch(
-      /\.popup\s*\{[^}]*width:\s*420px;[^}]*max-width:\s*100vw;/,
+      /html,\s*body\s*\{[^}]*width:\s*420px;/,
     );
+    expect(popupCss).toMatch(
+      /\.popup\s*\{[^}]*width:\s*420px;/,
+    );
+    expect(popupCss).not.toMatch(/\b(?:max-)?width:[^;]*vw/);
+    expect(popupCss).toMatch(
+      /\.popup\s*\{[^}]*max-height:\s*600px;/,
+    );
+    expect(popupCss).toMatch(
+      /\.popup\s*\{[^}]*overflow-y:\s*auto;/,
+    );
+    expect(popupCss).not.toMatch(/max-height:[^;]*vh/);
     expect(popupCss).toMatch(
       /\.popup\s*\{[\s\S]*font-size:\s*var\(--font-size\)/,
     );
