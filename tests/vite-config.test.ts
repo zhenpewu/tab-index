@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   copyExtensionReleaseFiles,
+  disablePreactDangerouslySetInnerHtml,
   releaseCopyEntries,
   shouldUseScaffoldFallback,
 } from "../vite.config";
@@ -102,6 +103,28 @@ describe("release asset copying", () => {
     temporaryDirectories.push(projectRoot, distRoot);
 
     expect(() => copyExtensionReleaseFiles(projectRoot, distRoot)).toThrow();
+  });
+});
+
+describe("Preact extension build", () => {
+  it("disables the unused dangerouslySetInnerHTML runtime assignment", () => {
+    const source =
+      "newHtml.__html != dom.innerHTML && (dom.innerHTML = newHtml.__html)";
+    const transformed = disablePreactDangerouslySetInnerHtml(
+      source,
+      "/project/node_modules/preact/dist/preact.mjs",
+    );
+
+    expect(transformed).not.toContain("dom.innerHTML = newHtml.__html");
+    expect(transformed).toContain(
+      "Preact dangerouslySetInnerHTML is disabled",
+    );
+    expect(
+      disablePreactDangerouslySetInnerHtml(
+        source,
+        "/project/src/popup/App.tsx",
+      ),
+    ).toBeNull();
   });
 });
 

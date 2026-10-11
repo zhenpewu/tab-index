@@ -13,6 +13,9 @@ const implementationEntries = [
   resolve(sourceRoot, "popup/main.tsx"),
   resolve(sourceRoot, "options/main.tsx"),
 ];
+const preactRuntimeSuffix = "/node_modules/preact/dist/preact.mjs";
+const preactInnerHtmlAssignment =
+  /\b[$A-Z_a-z][$\w]*\.innerHTML\s*=\s*[$A-Z_a-z][$\w]*\.__html\b/g;
 
 export const releaseCopyEntries = [
   "manifest.json",
@@ -27,6 +30,37 @@ export function shouldUseScaffoldFallback(
   pathExists: (entryPath: string) => boolean = existsSync,
 ) {
   return entryPaths.every((entryPath) => !pathExists(entryPath));
+}
+
+export function disablePreactDangerouslySetInnerHtml(
+  code: string,
+  id: string,
+): string | null {
+  const modulePath = id.split("?", 1)[0]?.replaceAll("\\", "/");
+  if (!modulePath?.endsWith(preactRuntimeSuffix)) {
+    return null;
+  }
+
+  const matches = code.match(preactInnerHtmlAssignment);
+  if (matches?.length !== 1) {
+    throw new Error(
+      `Expected one Preact innerHTML assignment, found ${matches?.length ?? 0}`,
+    );
+  }
+
+  return code.replace(
+    preactInnerHtmlAssignment,
+    '(() => { throw new Error("Preact dangerouslySetInnerHTML is disabled"); })()',
+  );
+}
+
+function disablePreactDangerouslySetInnerHtmlPlugin() {
+  return {
+    name: "tab-index-disable-preact-dangerously-set-inner-html",
+    transform(code: string, id: string) {
+      return disablePreactDangerouslySetInnerHtml(code, id);
+    },
+  };
 }
 
 function scaffoldFallbackEntries() {
@@ -85,6 +119,7 @@ export default defineConfig({
   root: sourceRoot,
   publicDir: false,
   plugins: [
+    disablePreactDangerouslySetInnerHtmlPlugin(),
     ...(useScaffoldFallback ? [scaffoldFallbackEntries()] : []),
     copyExtensionFiles(),
   ],
