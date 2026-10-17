@@ -1,18 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0.5 0.75 14.5 14.5">
-  <style>
-    .icon { color: #5b5b66; }
-    @media (prefers-color-scheme: dark) { .icon { color: #fbfbfe; } }
-  </style>
-  <defs>
-    <mask id="front-cutouts">
-      <rect width="16" height="16" fill="#fff"/>
-      <circle cx="5.55" cy="5" r=".7" fill="#000"/>
-      <rect x="6.9" y="4.35" width="6.35" height="1.35" rx=".675" fill="#000"/>
-      <rect x="4.7" y="6.55" width="9.2" height="3.55" rx=".6" fill="#000"/>
-    </mask>
-  </defs>
-  <g class="icon" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-    <path data-layer="rear-trace" d="M1.5 5.25v6.75a1.5 1.5 0 0 0 1.5 1.5h9.25" fill="none" stroke-width="1.35"/>
-    <rect data-layer="front-card" x="3.35" y="2.9" width="11.9" height="8.75" rx="2.1" stroke="none" mask="url(#front-cutouts)"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 96 96" fill="none">
+  <path
+    data-layer="rear"
+    d="M50 12H11C6.58172 12 3 15.5817 3 20V59C3 63.4183 6.58172 67 11 67H50C54.4183 67 58 63.4183 58 59V20C58 15.5817 54.4183 12 50 12Z"
+    fill="#666670"
+    stroke="#2B2B32"
+    stroke-width="5"
+  />
+  <path
+    data-layer="duplicate"
+    d="M67 22H28C23.5817 22 20 25.5817 20 30V69C20 73.4183 23.5817 77 28 77H67C71.4183 77 75 73.4183 75 69V30C75 25.5817 71.4183 22 67 22Z"
+    fill="#F4B942"
+  />
+  <path
+    data-layer="duplicate-outline"
+    d="M24.9377 22.607C25.881 22.2159 26.9153 22 28 22H32.875M20.607 26.9377C20.2159 27.881 20 28.9153 20 30V34.875M20 44.625V54.375M20 64.125V69C20 70.0847 20.2159 71.119 20.607 72.0623M24.9377 76.393C25.881 76.7841 26.9153 77 28 77H32.875M42.625 77H52.375M62.125 77H67C68.0847 77 69.119 76.7841 70.0623 76.393M74.393 72.0623C74.7841 71.119 75 70.0847 75 69V64.125M75 54.375V44.625M75 34.875V30C75 28.9153 74.7841 27.881 74.393 26.9377M70.0623 22.607C69.119 22.2159 68.0847 22 67 22H62.125M52.375 22H42.625"
+    stroke="#2B2B32"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    data-layer="front"
+    d="M84 32H45C40.5817 32 37 35.5817 37 40V79C37 83.4183 40.5817 87 45 87H84C88.4183 87 92 83.4183 92 79V40C92 35.5817 88.4183 32 84 32Z"
+    fill="#FFF9EB"
+    stroke="#2B2B32"
+    stroke-width="5"
+  />
 </svg>

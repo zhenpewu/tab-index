@@ -1,6 +1,10 @@
-# Tab Index
+<p align="center">
+  <img src="icons/icon-96.svg" width="96" height="96" alt="Tab Index icon">
+</p>
 
-Search, switch, and close duplicate tabs in Firefox.
+<h1 align="center">Tab Index</h1>
+
+<p align="center">Search, switch, and close duplicate tabs in Firefox.</p>
 
 Tab Index is a Firefox-only Manifest V3 extension with a compact, Firefox-style
 popup.

@@ -1683,30 +1683,25 @@ describe("popup theme and density", () => {
     expect(`${themeCss}\n${popupCss}`).not.toMatch(/purple|pink/i);
   });
 
-  it("uses the approved two-tab toolbar icon", () => {
+  it("uses the three-layer duplicate toolbar icon", () => {
     for (const size of [16, 32, 48, 96]) {
       const icon = readFileSync(
         resolve(process.cwd(), `icons/icon-${size}.svg`),
         "utf8",
       );
 
-      expect(icon).toContain('class="icon"');
-      expect(icon).toContain("@media (prefers-color-scheme: dark)");
-      expect(icon).toContain(".icon { color: #5b5b66; }");
-      expect(icon).toContain('data-layer="rear-trace"');
-      expect(icon).toContain('data-layer="front-card"');
-      expect(icon).toContain('viewBox="0.5 0.75 14.5 14.5"');
-      expect(icon).toContain('mask="url(#front-cutouts)"');
-      expect(icon).toContain(
-        'd="M1.5 5.25v6.75a1.5 1.5 0 0 0 1.5 1.5h9.25"',
-      );
-      expect(icon).toContain('stroke-width="1.35"');
-      expect(icon).toContain(
-        'x="3.35" y="2.9" width="11.9" height="8.75"',
-      );
-      expect(icon).not.toContain('opacity=".65"');
-      expect(icon).not.toMatch(/#0060df|#ffffff/i);
-      expect(icon).not.toMatch(/<rect[^>]+x="1"[^>]+y="1"[^>]+width="14"/);
+      expect(icon).toContain(`width="${size}" height="${size}"`);
+      expect(icon).toContain('viewBox="0 0 96 96"');
+      expect(icon).toContain('data-layer="rear"');
+      expect(icon).toContain('data-layer="duplicate"');
+      expect(icon).toContain('data-layer="duplicate-outline"');
+      expect(icon).toContain('data-layer="front"');
+      expect(icon).toContain('fill="#666670"');
+      expect(icon).toContain('fill="#F4B942"');
+      expect(icon).toContain('fill="#FFF9EB"');
+      expect(icon).toContain('stroke="#2B2B32"');
+      expect(icon).toContain('stroke-linecap="round"');
+      expect(icon).not.toContain("prefers-color-scheme");
     }
   });
 });
